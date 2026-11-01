@@ -1,0 +1,6 @@
+{
+  "appId": "ir.fieldmap.app",
+  "appName": "نقشه میدانی",
+  "webDir": "www",
+  "server": { "androidScheme": "https" }
+}

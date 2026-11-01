@@ -1,0 +1,125 @@
+<!doctype html>
+<html lang="fa" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="theme-color" content="#14303a">
+<title>نقشه میدانی</title>
+<link rel="stylesheet" href="lib/leaflet.css">
+<link rel="stylesheet" href="app.css">
+</head>
+<body>
+<div id="map"></div>
+<div id="crosshair" aria-hidden="true"><i></i><i></i></div>
+
+<header id="topbar">
+  <button id="ro" type="button" class="ro" aria-label="کپی مختصات مرکز نقشه"><span dir="ltr" id="ro-text">—</span></button>
+  <div class="fmt-switch" role="group" aria-label="فرمت مختصات"><button type="button" id="fmt-geo">جغرافیایی</button><button type="button" id="fmt-utm">UTM</button></div>
+</header>
+<div id="mode-chip" hidden></div>
+<div id="lp-ring" aria-hidden="true" hidden></div>
+
+<div id="compass" aria-label="قطب‌نما">
+  <svg viewBox="-50 -50 100 100" width="84" height="84" aria-hidden="true">
+    <circle r="47" class="c-face"/>
+    <g id="c-ticks"></g>
+    <g id="c-needle"><path d="M0,-38 L7,0 L-7,0 Z" class="c-north"/><path d="M0,38 L7,0 L-7,0 Z" class="c-south"/><circle r="3" class="c-pin"/></g>
+  </svg>
+  <div id="c-text"><b id="c-deg">—</b><span id="c-dir"></span></div>
+</div>
+
+<div id="gps-chip" hidden><div id="gps-acc"></div><div id="gps-pos" dir="ltr"></div></div>
+<div id="toast" role="status" aria-live="polite"></div>
+
+<div id="nav-hud" hidden>
+  <div id="nav-arrow" aria-hidden="true">↑</div>
+  <div class="nav-mid"><div id="nav-instr">—</div><div id="nav-dist"></div><div id="nav-rem"></div></div>
+  <div class="nav-side"><label class="chk small"><input type="checkbox" id="nav-voice"> صدا</label><button type="button" id="nav-stop">پایان</button></div>
+</div>
+
+<!-- نقشه‌ی زمینه -->
+<section id="sheet-layers" class="sheet tall" hidden>
+  <h2>نقشه‌ی زمینه</h2>
+  <div id="layer-list"></div>
+  <h3>لایه‌های رویه (روی هر نقشه‌ای)</h3>
+  <div id="overlay-list"></div>
+  <h3>لایه‌های برداری</h3>
+  <div id="ref-list"></div>
+  <button id="add-wfs" type="button" class="link">＋ افزودن لایه‌ی دیگر از سرور شهرداری مشهد (نواحی، محله‌ها، …)</button>
+  <h3>گزینه‌ها</h3>
+  <label class="chk"><input type="checkbox" id="opt-parcel"> انتخاب پارسل مشهد با لمس نقشه (روی نقشه‌ی شهرداری مشهد خودکار فعال است)</label>
+  <label class="chk"><input type="checkbox" id="opt-cross"> نمایش علامت مرکز نقشه</label>
+  <button id="open-settings" type="button" class="link">⚙ تنظیمات و کلیدها (Google، پارسل مشهد، سحاک، نشان)</button>
+  <button id="clear-cache" type="button" class="link">پاک کردن کش نقشه‌ی ذخیره‌شده روی گوشی</button>
+</section>
+
+<!-- پروژه و لایه‌ها -->
+<section id="sheet-project" class="sheet" hidden>
+  <h2>پروژه و لایه‌ها</h2>
+  <div id="project-body"></div>
+</section>
+
+<!-- ترسیم -->
+<section id="sheet-draw" class="sheet" hidden>
+  <h2>ثبت و ترسیم</h2>
+  <div class="seg-switch" role="tablist">
+    <button type="button" id="m-point" role="tab">نقطه</button>
+    <button type="button" id="m-line" role="tab">خط</button>
+    <button type="button" id="m-area" role="tab">چندضلعی</button>
+  </div>
+  <p id="m-result">نوع ترسیم را انتخاب کنید و نقشه را طوری حرکت دهید که علامت وسط روی محل مورد نظر باشد.</p>
+  <div class="row">
+    <button type="button" id="d-add" class="primary">ثبت در مرکز نقشه</button>
+    <button type="button" id="d-add-gps">از موقعیت GPS من</button>
+  </div>
+  <div class="row" id="d-shape-btns">
+    <button type="button" id="d-save" class="ok">ذخیره در پروژه</button>
+    <button type="button" id="d-undo">برگردان</button>
+    <button type="button" id="d-clear">پاک کردن</button>
+    <button type="button" id="d-end">پایان</button>
+  </div>
+  <label class="chk"><input type="checkbox" id="d-quick" checked> ثبت سریع نقطه (نام خودکار P1، P2، …)</label>
+  <div class="row symrow"><button type="button" id="d-symbol"><span id="d-symbol-prev"></span> نماد پیش‌فرض نقطه‌ها</button></div>
+  <p class="hint">میان‌بر: روی هر جای نقشه انگشت را یک ثانیه نگه دارید تا همان‌جا یک نقطه‌ی جدید ثبت شود.</p>
+  <div class="rec-row"><button type="button" id="d-rec">● شروع ضبط مسیر حرکت</button><span id="d-rec-info"></span></div>
+</section>
+
+<!-- مسیریابی -->
+<section id="sheet-route" class="sheet" hidden>
+  <h2>مسیریابی</h2>
+  <div class="rp"><span class="pin a">A</span><div class="rp-t"><small>مبدا</small><span id="r-origin">موقعیت من (GPS)</span></div>
+    <button type="button" id="r-o-me" class="mini2">موقعیت من</button><button type="button" id="r-o-center" class="mini2">مرکز نقشه</button></div>
+  <div class="rp"><span class="pin b">B</span><div class="rp-t"><small>مقصد</small><span id="r-dest">انتخاب نشده</span></div>
+    <button type="button" id="r-d-center" class="mini2">مرکز نقشه</button><button type="button" id="r-swap" class="mini2" aria-label="جابه‌جایی مبدا و مقصد">⇅</button></div>
+  <p class="hint">می‌توانید روی هر نقطه‌ی ثبت‌شده روی نقشه بزنید و «مبدا» یا «مقصد» را انتخاب کنید.</p>
+  <div class="row">
+    <select id="r-engine" class="field"><option value="auto">خودکار (گوگل ← OSRM ← مستقیم)</option><option value="google">فقط گوگل (با ترافیک، نیاز به کلید)</option><option value="osrm">فقط OSRM (بدون ترافیک)</option><option value="direct">خط مستقیم (بدون اینترنت)</option></select>
+  </div>
+  <div class="seg-switch"><button type="button" id="r-mode-fast">سریع‌ترین</button><button type="button" id="r-mode-short">کوتاه‌ترین</button></div>
+  <div class="row"><button type="button" id="r-go" class="primary">مسیریابی</button><button type="button" id="r-start" class="ok" disabled>شروع هدایت</button><button type="button" id="r-clear">پاک کردن</button></div>
+  <div class="row"><button type="button" id="r-gmaps">باز کردن در Google Maps (هدایت با ترافیک زنده)</button><button type="button" id="r-traffic">ترافیک روی نقشه</button></div>
+  <div id="r-summary"></div>
+  <div id="r-steps"></div>
+</section>
+
+<input type="file" id="file-in" multiple hidden>
+
+<nav id="bottombar">
+  <button type="button" id="b-layers"><svg viewBox="0 0 24 24"><path d="M12 3 2 8l10 5 10-5-10-5Zm-8.4 9.2L2 13l10 5 10-5-1.6-.8L12 16l-8.4-3.8Zm0 4L2 17l10 5 10-5-1.6-.8L12 20l-8.4-3.8Z"/></svg>نقشه</button>
+  <button type="button" id="b-project"><svg viewBox="0 0 24 24"><path d="M4 4h16v4H4V4Zm0 6h16v4H4v-4Zm0 6h16v4H4v-4Zm2-10v0h2V6H6Zm0 6h2v-0H6Zm0 6h2Z"/></svg>لایه‌ها</button>
+  <button type="button" id="b-draw"><svg viewBox="0 0 24 24"><path d="M3 17 17 3l4 4L7 21l-4-4Zm3.4 0 .9.9 1.1-1.1-1.4-1.4-.6.6Zm3-3 1.6 1.6 1.1-1.1-1.6-1.6-1.1 1.1Zm3-3 1.4 1.4 1.1-1.1-1.4-1.4-1.1 1.1Z"/></svg>ترسیم</button>
+  <button type="button" id="b-route"><svg viewBox="0 0 24 24"><path d="M12 2 4 22l8-4 8 4L12 2Z"/></svg>مسیر</button>
+  <button type="button" id="b-locate"><svg viewBox="0 0 24 24"><path d="M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8Zm-1-6v3.1A7 7 0 0 0 5.1 11H2v2h3.1A7 7 0 0 0 11 18.9V22h2v-3.1A7 7 0 0 0 18.9 13H22v-2h-3.1A7 7 0 0 0 13 5.1V2h-2Zm1 5a5 5 0 1 1 0 10 5 5 0 0 1 0-10Z"/></svg>من</button>
+</nav>
+
+<script src="vendor.js"></script>
+<script src="lib/leaflet.js"></script>
+<script src="util.js"></script>
+<script src="dataio.js"></script>
+<script src="tiles.js"></script>
+<script src="vec.js"></script>
+<script src="project.js"></script>
+<script src="route.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
