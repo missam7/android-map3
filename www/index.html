@@ -21,6 +21,15 @@
   </div>
   <div id="mode-chip" hidden></div>
 </header>
+  <div id="searchbar">
+  <div class="sr-box">
+    <span class="sr-ico" data-icon="search" data-icon-size="18"></span>
+    <input type="search" id="sr-input" placeholder="جستجوی مکان، مختصات یا کد نوسازی…" autocomplete="off">
+    <button type="button" id="sr-mic" aria-label="جستجوی صوتی">🎙</button>
+    <button type="button" id="sr-clear" aria-label="پاک کردن">✕</button>
+  </div>
+  <div id="sr-list" hidden></div>
+</div>
 <div id="lp-ring" aria-hidden="true" hidden></div>
 
 <!-- قطب‌نما -->
@@ -147,6 +156,7 @@
 <script src="vec.js"></script>
 <script src="project.js"></script>
 <script src="route.js"></script>
+<script src="search.js"></script>
 <script src="app.js"></script>
 </body>
 </html>
