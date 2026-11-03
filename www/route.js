@@ -285,6 +285,8 @@ function startNav() {
   nav = { route: r, off: 0, lastReroute: 0, spoken: {}, arrived: false };
   $('#nav-hud').hidden = false; document.body.classList.add('navigating'); if (FM.closeSheets) FM.closeSheets(); FM.gps.follow(true);
   toast('هدایت شروع شد. برای دیدن مسیر کامل، صفحه را نگه‌دارید و حرکت دهید.', 3500);
+    if (!store.get('voice', false)) { store.set('voice', true); $('#nav-voice').checked = true; }
+  speak('هدایت آغاز شد', 'Navigation started');
   const fix = FM.gps.last(); if (fix) onFix(fix);
 }
 function stopNav(silent) {
@@ -355,6 +357,9 @@ function init(m) {
     b.disabled = false; b.textContent = 'ذخیره‌ی جاده‌های این محدوده برای مسیریابی آفلاین';
   });
   const v = $('#nav-voice'); v.checked = store.get('voice', false); v.addEventListener('change', () => { store.set('voice', v.checked); if (v.checked) speak('صدای راهنما روشن شد'); });
+  const nl = $('#nav-lang'); nl.value = store.get('navLang', 'fa');
+  nl.addEventListener('change', () => { store.set('navLang', nl.value); });
+
   if (FM.gps) FM.gps.onFix(onFix);
 }
 FM.route = { init, setOrigin, setDest, clear, compute, _t: { decodePolyline, parseGoogle, parseNeshan, parseOsrm, snap, prep, faInstr, badgesOf } };
