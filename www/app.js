@@ -161,8 +161,7 @@ function onGpsError(err) {
 }
 function showGpsChip() {
   const l = gps.last; if (!l) return; const chip = $('#gps-chip'); chip.hidden = false;
-  $('#gps-acc').textContent = 'دقت ±' + nf(Math.round(l.accuracy)) + ' متر'; chip.classList.toggle('weak', l.accuracy > 20);
-  $('#gps-pos').textContent = FM.fmtCoord(l.ll.lat, l.ll.lng).short;
+  $('#gps-acc').textContent = '±' + nf(Math.round(l.accuracy)) + ' m'; chip.classList.toggle('weak', l.accuracy > 20);
 }
 function onFix(pos) {
   const { latitude, longitude, accuracy, heading, speed, altitude } = pos.coords, ll = L.latLng(latitude, longitude), first = !gps.last;
@@ -326,7 +325,7 @@ $('#f-traffic').addEventListener('click', () => { const on = FM.tiles.toggleTraf
 const baseChange = FM.onBaseChange; FM.onBaseChange = () => { baseChange(); syncTrafficFab(); };
 
 /* اطلاعات نقطه‌ی مرکز نقشه */
-$('#f-info').addEventListener('click', () => {
+$('#f-info').addEventListener('click', async () => {
   const c = map.getCenter(), f = FM.fmtCoord(c.lat, c.lng), d = FM.geo ? FM.geo.describe(c.lat, c.lng) : { text: '', lines: [] };
   const w = el('div', { class: 'pop' });
   w.appendChild(el('div', { class: 'pop-title', text: 'اطلاعات این نقطه' }));
@@ -339,6 +338,10 @@ $('#f-info').addEventListener('click', () => {
   if (FM.vec.parcelMode()) add('پارسل', () => { map.closePopup(); FM.vec.parcelClick(c); });
   add('کپی', async () => { try { await navigator.clipboard.writeText(f.copy + (d.text ? '\n' + d.text : '')); toast('کپی شد.'); } catch (e) { toast('کپی انجام نشد.'); } });
   w.appendChild(btns); L.popup({ maxWidth: 300 }).setLatLng(c).setContent(w).openOn(map);
+    if (FM.geo.describeFull) {
+    const full = await FM.geo.describeFull(c.lat, c.lng);
+    if (full.text && full.text !== d.text) { const n = w.querySelector('.pop-desc'); if (n) n.textContent = full.text; }
+  }
 });
 
 /* ───────────── مرزهای اداری: وضعیت و افزودن فایل ───────────── */
