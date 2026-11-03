@@ -135,10 +135,10 @@ function extractGeojson(text) {
   }
   return null;
 }
-async function loadWfs(def) {
+async function loadWfs(def, force) {
   const ck = 'wfs/' + def.typeName, enc = new TextEncoder(), dec = new TextDecoder();
   const cached = await FM.tiles.TileCache.get(ck);
-  if (cached && Date.now() - cached.ts < 7 * DAY) { const fc = extractGeojson(dec.decode(cached.buf)); if (fc) return fc; }
+  if (!force && cached && Date.now() - cached.ts < 7 * DAY) { const fc = extractGeojson(dec.decode(cached.buf)); if (fc) return fc; }
   let lastErr = null;
   for (const base of WFS_SERVERS) {
     try {
@@ -291,12 +291,15 @@ async function parcelClick(ll) {
   w.appendChild(el('div', { class: 'pop-sub', text: 'کد نوسازی' }));
   w.appendChild(el('div', { class: 'nosazi', dir: 'ltr', text: code || '—' }));
   if (area) w.appendChild(el('div', { class: 'pop-desc', text: 'مساحت تقریبی: ' + FM.fmtArea(area) }));
+  const adminText = FM.geo ? FM.geo.describe(ll.lat, ll.lng).text : '';
+  if (adminText) w.appendChild(el('div', { class: 'pop-desc admin', text: adminText }));
   w.appendChild(propsTable(p));
   const btns = el('div', { class: 'pop-btns' });
   const add = (label, fn) => btns.appendChild(el('button', { type: 'button', text: label, onclick: fn }));
   if (code) add('کپی کد', async () => { try { await navigator.clipboard.writeText(String(code)); toast('کد کپی شد.'); } catch (e) { toast('کد: ' + code, 5000); } });
   add('ذخیره‌ی پارسل در پروژه', () => {
-    FM.project.addFeature({ type: 'Feature', geometry: feat.geometry, properties: Object.assign({}, flat(p), { name: code ? String(code) : 'پارسل', source: 'websdi', stroke: '#ff3b30', fill: '#ff3b30', 'fill-opacity': 0.2, area_m2: Math.round(area) }) });
+    const props = Object.assign({}, flat(p), { name: code ? String(code) : 'پارسل', source: 'websdi', stroke: '#ff3b30', fill: '#ff3b30', 'fill-opacity': 0.2, area_m2: Math.round(area) }); if (adminText) props.description = adminText;
+    FM.project.addFeature({ type: 'Feature', geometry: feat.geometry, properties: props });
     toast('پارسل در پروژه ذخیره شد.'); map.closePopup();
   });
   if (code) add('گزارش‌های شهرداری', async () => {
@@ -310,5 +313,12 @@ async function parcelClick(ll) {
 }
 
 function init(m) { map = m; renderRefList(); restoreRefs(); }
-FM.vec = { init, renderRefList, addWfsDialog, parcelClick, parcelMode, toggleRef, _t: { extractGeojson, drawMvt, sahakTile, loadWfs, SahakGrid } };
+// برای جست‌وجوی مرز اداری: خواندن لایه‌ی WFS ذخیره‌شده (حتی اگر کهنه باشد) و دریافت در صورت نبودن
+async function getCachedWfs(key) {
+  const def = allDefs()[key]; if (!def) return null;
+  const c = await FM.tiles.TileCache.get('wfs/' + def.typeName); if (!c) return null;
+  return extractGeojson(new TextDecoder().decode(c.buf));
+}
+async function fetchWfsByKey(key, force) { const def = allDefs()[key]; if (!def) return null; return loadWfs(def, force); }
+FM.vec = { init, renderRefList, addWfsDialog, parcelClick, parcelMode, toggleRef, getCachedWfs, fetchWfsByKey, pickNameAny, WFS, _t: { extractGeojson, drawMvt, sahakTile, loadWfs, SahakGrid } };
 })(window);

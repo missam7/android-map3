@@ -5,8 +5,14 @@ const FM = root.FM = root.FM || {};
 const $ = (s, el) => (el || document).querySelector(s);
 const nf = (n, d = 0) => new Intl.NumberFormat('fa-IR', { maximumFractionDigits: d }).format(n);
 const esc = (s) => String(s == null ? '' : s).replace(/[<>&"']/g, (c) => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;', "'": '&#39;' }[c]));
+const DEFAULTS = root.FM_DEFAULTS || {};
 const store = {
-  get(k, d) { try { const v = localStorage.getItem(k); return v === null ? d : JSON.parse(v); } catch (e) { return d; } },
+  get(k, d) {
+    let v; try { const raw = localStorage.getItem(k); v = raw === null ? undefined : JSON.parse(raw); } catch (e) { v = undefined; }
+    if ((v === undefined || v === null || v === '') && DEFAULTS[k] !== undefined) return DEFAULTS[k];
+    return v === undefined ? d : v;
+  },
+  hasOwn(k) { try { const raw = localStorage.getItem(k); return raw !== null && JSON.parse(raw) !== ''; } catch (e) { return false; } },
   set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) { /* ignore */ } }
 };
 let toastTimer = null;

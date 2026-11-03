@@ -73,6 +73,10 @@ function popupFor(f, layer) {
     const polys = g.type === 'Polygon' ? [g.coordinates] : g.coordinates;
     rows.push(['مساحت', featureInfo(f)]); rows.push(['محیط', FM.fmtLen(polys.reduce((a, pl) => a + FM.pathLen(pl[0].map(FM.ll2)), 0))]);
   }
+  if (g.type === 'Point' && FM.geo && !FM.geo.hasAdmin(p.description)) {
+    const d = FM.geo.describe(g.coordinates[1], g.coordinates[0]);
+    d.lines.forEach((ln) => { const k = ln.indexOf(': '); rows.push([ln.slice(0, k), ln.slice(k + 2)]); });
+  }
   const skip = new Set(['name', 'description', 'stroke', 'stroke-width', 'stroke-opacity', 'fill', 'fill-opacity', 'marker-color', 'marker-size', 'color', 'isText', 'textHeight', 'rotation', 'isCircle', 'radius', 'z', 'styleUrl', 'icon', 'visibility', 'symbol', 'size']);
   Object.keys(p).filter((k) => !skip.has(k) && p[k] != null && typeof p[k] !== 'object').slice(0, 14).forEach((k) => rows.push([k, String(p[k])]));
   if (rows.length) {
@@ -248,6 +252,11 @@ function renderManager() {
     const row = el('div', { class: 'lrow' }, [cb, name]);
     const mk = (label, title, fn) => row.appendChild(el('button', { type: 'button', class: 'mini', text: label, title, 'aria-label': title, onclick: fn }));
     mk('نماد', 'نماد و رنگ لایه', async () => { const v = await FM.pickSymbol({ symbol: l.symbol || 'circle', color: (l.style && l.style.color) || '#e8641b', size: l.size || 22 }, 'نماد و رنگ پیش‌فرض لایه'); if (!v) return; l.symbol = v.symbol; l.size = v.size; l.style = Object.assign({}, l.style, { color: v.color }); renderLayer(l); saveSoon(); });
+    mk('ⓘ', 'نوشتن اطلاعات اداری (استان، شهرستان، ناحیه‌ها) در توضیحات نقاط', () => {
+      if (!FM.geo) return; let n = 0, miss = 0;
+      l.features.forEach((f) => { if (f.geometry && f.geometry.type === 'Point') { const [lng, lat] = f.geometry.coordinates; const t = FM.geo.withAdminText(lat, lng, f.properties.description || ''); if (t && t !== (f.properties.description || '')) { f.properties.description = t; n++; } else if (!t) miss++; } });
+      renderLayer(l); saveSoon(); toast(n ? `اطلاعات اداری ${nf(n)} نقطه نوشته شد.` + (miss ? ` (${nf(miss)} نقطه خارج از مرزهای شناخته‌شده)` : '') : 'نقطه‌ی جدیدی برای تکمیل نبود یا هنوز داده‌ی مرزی نصب نشده است.', 4500);
+    });
     mk('Aa', 'برچسب‌ها', () => { l.labels = !l.labels; renderLayer(l); saveSoon(); toast(l.labels ? 'برچسب‌ها روشن شد.' : 'برچسب‌ها خاموش شد.'); });
     mk('⌖', 'زوم', () => { zoomTo([l]); });
     mk('✕', 'حذف', async () => {
@@ -391,6 +400,6 @@ async function exportDialog(preselect) {
   } catch (e) { toast('خطا در ساخت خروجی: ' + e.message, 6000); }
 }
 
-FM.project = { init, addLayer, addFeature, drawLayer, nextName, zoomTo, importFiles, exportDialog, renderManager, saveSoon, current: () => P.project, boundsOf, selectCrs, focusFeature, openFeaturePopup, editFeatureDialog, renderLayer, groups: P.groups };
+FM.project = { init, addLayer, addFeature, drawLayer, nextName, zoomTo, importFiles, exportDialog, renderManager, saveSoon, current: () => P.project, boundsOf, selectCrs, focusFeature, openFeaturePopup, editFeatureDialog, renderLayer, groups: P.groups, askCrs };
 $('#file-in').addEventListener('change', async (e) => { const fl = Array.from(e.target.files); e.target.value = ''; await importFiles(fl); });
 })(window);

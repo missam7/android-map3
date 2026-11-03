@@ -6,19 +6,19 @@ const MOBILE_UA = 'Mozilla/5.0 (Linux; Android 13; Mobile) AppleWebKit/537.36 (K
 
 // نکته: کلید نشان داخل کد نیست؛ کاربر در برنامه وارد می‌کند.
 const LAYERS = [
-  { id: 'gsat', name: 'ماهواره گوگل', note: 'تصویر', max: 21, sub: '0123', url: 'https://mt{s}.google.com/vt?lyrs=s&x={x}&y={y}&z={z}' },
-  { id: 'ghyb', name: 'ماهواره با برچسب', note: 'ترکیبی', max: 21, sub: '0123', url: 'https://mt{s}.google.com/vt?lyrs=y&x={x}&y={y}&z={z}' },
-  { id: 'gmap', name: 'نقشه خیابانی گوگل', note: 'خیابان', max: 21, sub: '0123', url: 'https://mt{s}.google.com/vt?lyrs=m&x={x}&y={y}&z={z}' },
-  { id: 'gter', name: 'گوگل Terrain (پستی‌بلندی)', note: 'توپوگرافی', max: 20, sub: '0123', url: 'https://mt{s}.google.com/vt?lyrs=p&x={x}&y={y}&z={z}' },
-  { id: 'gtraffic', name: 'ترافیک گوگل (نقشه)', note: 'ترافیک زنده', max: 20, sub: '0123', traffic: true, url: 'https://mt{s}.google.com/vt?lyrs=m,traffic&hl=fa&x={x}&y={y}&z={z}' },
-  { id: 'gtrafficsat', name: 'ترافیک گوگل (ماهواره)', note: 'ترافیک زنده', max: 20, sub: '0123', traffic: true, url: 'https://mt{s}.google.com/vt?lyrs=y,traffic&hl=fa&x={x}&y={y}&z={z}' },
-  { id: 'osm', name: 'OpenStreetMap', note: 'خیابان', max: 19, sub: 'abc', url: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png' },
-  { id: 'cyclosm', name: 'CycleOSM (دوچرخه/مسیرها)', note: 'مسیرها', max: 20, sub: 'abc', url: 'https://{s}.tile-cyclosm.openstreetmap.fr/cyclosm/{z}/{x}/{y}.png' },
-  { id: 'orm', name: 'OpenRailwayMap (راه‌آهن)', note: 'راه‌آهن', max: 19, sub: 'abc', referer: 'https://www.openrailwaymap.org/', url: 'https://{s}.tiles.openrailwaymap.org/standard/{z}/{x}/{y}.png' },
-  { id: 'mashhad', name: 'پایه‌ی شهرداری مشهد ۱۴۰۱', note: 'مشهد · پارسل', max: 19, tms: true, iran: true,
+  { id: 'gsat', kind: 'sat', name: 'ماهواره گوگل', note: 'تصویر', max: 21, sub: '0123', url: 'https://mt{s}.google.com/vt?lyrs=s&x={x}&y={y}&z={z}' },
+  { id: 'ghyb', kind: 'sat', name: 'ماهواره با برچسب', note: 'ترکیبی', max: 21, sub: '0123', url: 'https://mt{s}.google.com/vt?lyrs=y&x={x}&y={y}&z={z}' },
+  { id: 'gmap', kind: 'road', name: 'نقشه خیابانی گوگل', note: 'خیابان', max: 21, sub: '0123', url: 'https://mt{s}.google.com/vt?lyrs=m&x={x}&y={y}&z={z}' },
+  { id: 'gter', kind: 'topo', name: 'گوگل Terrain (پستی‌بلندی)', note: 'توپوگرافی', max: 20, sub: '0123', url: 'https://mt{s}.google.com/vt?lyrs=p&x={x}&y={y}&z={z}' },
+  { id: 'gtraffic', kind: 'traffic', name: 'ترافیک گوگل (نقشه)', note: 'ترافیک زنده', max: 20, sub: '0123', traffic: true, url: 'https://mt{s}.google.com/vt?lyrs=m,traffic&hl=fa&x={x}&y={y}&z={z}' },
+  { id: 'gtrafficsat', kind: 'traffic', name: 'ترافیک گوگل (ماهواره)', note: 'ترافیک زنده', max: 20, sub: '0123', traffic: true, url: 'https://mt{s}.google.com/vt?lyrs=y,traffic&hl=fa&x={x}&y={y}&z={z}' },
+  { id: 'osm', kind: 'road', name: 'OpenStreetMap', note: 'خیابان', max: 19, sub: 'abc', url: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png' },
+  { id: 'cyclosm', kind: 'bike', name: 'CycleOSM (دوچرخه/مسیرها)', note: 'مسیرها', max: 20, sub: 'abc', url: 'https://{s}.tile-cyclosm.openstreetmap.fr/cyclosm/{z}/{x}/{y}.png' },
+  { id: 'orm', kind: 'rail', name: 'OpenRailwayMap (راه‌آهن)', note: 'راه‌آهن', max: 19, sub: 'abc', referer: 'https://www.openrailwaymap.org/', url: 'https://{s}.tiles.openrailwaymap.org/standard/{z}/{x}/{y}.png' },
+  { id: 'mashhad', kind: 'local', name: 'پایه‌ی شهرداری مشهد ۱۴۰۱', note: 'مشهد · پارسل', max: 19, tms: true, iran: true,
     url: 'https://basemap.mashhad.ir/geoserver/gwc/service/tms/1.0.0/MashhadBaseMap1401@EPSG:900913@png/{z}/{x}/{y}.png' },
-  { id: 'nsat', name: 'ماهواره نشان', note: 'کلید لازم', max: 18, needsKey: true, iran: true, url: 'https://api.neshan.org/tile/raster/satellite/{z}/{x}/{y}?Api-key={key}' },
-  { id: 'nmap', name: 'نقشه نشان', note: 'کلید لازم', max: 18, needsKey: true, iran: true, url: 'https://api.neshan.org/tile/raster/basemap/plate/{z}/{x}/{y}?Api-key={key}' }
+  { id: 'nsat', kind: 'sat', name: 'ماهواره نشان', note: 'کلید لازم', max: 18, needsKey: true, iran: true, url: 'https://api.neshan.org/tile/raster/satellite/{z}/{x}/{y}?Api-key={key}' },
+  { id: 'nmap', kind: 'road', name: 'نقشه نشان', note: 'کلید لازم', max: 18, needsKey: true, iran: true, url: 'https://api.neshan.org/tile/raster/basemap/plate/{z}/{x}/{y}?Api-key={key}' }
 ];
 // لایه‌های رویه (شفاف) که روی هر نقشه‌ی زمینه‌ای قرار می‌گیرند
 const OVERLAYS = [

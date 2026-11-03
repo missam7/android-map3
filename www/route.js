@@ -1,9 +1,9 @@
-/* مسیریابی (نشان ← OSRM ← خط مستقیم) و هدایت لحظه‌ای */
+/* مسیریابی (نشان ← موتور داخلی ← OSRM ← خط مستقیم)، امتیازدهی ترافیک گوگل و هدایت لحظه‌ای */
 (function (root) {
 'use strict';
 const FM = root.FM, { $, nf, toast, fmtLen, fmtDur, haversine, bearing, store, esc, el } = FM;
 const RAD = Math.PI / 180;
-let map = null, origin = null, dest = null, routes = [], mode = 'fast', sel = 0, nav = null;
+let map = null, origin = null, dest = null, routes = [], sel = 0, selManual = false, nav = null;
 const group = L.layerGroup(), marks = {};
 
 /* ───────────── شبکه ───────────── */
@@ -78,7 +78,24 @@ function parseGoogle(j) {
       steps.push({ text: ni.instructions || faInstr(m.type, m.mod, ''), dist: s.distanceMeters || 0, loc: ll ? [ll.latitude, ll.longitude] : null, type: m.type, mod: m.mod });
     }));
     const enc = r.polyline && r.polyline.encodedPolyline;
-    return { coords: enc ? decodePolyline(enc) : [], distance: r.distanceMeters || 0, duration: parseSec(r.duration), staticDuration: parseSec(r.staticDuration), steps, provider: 'google' };
+    return { coords: enc ? decodePolyline(enc) : [], distance: r.distanceMeters || 0, duration: parseSec(r.duration), staticDuration: parseSec(r.staticDuration), steps, provider: 'google', trafficAware: true };
+  }).filter((r) => r.coords.length > 1);
+}
+function parseNeshan(j) {
+  return (j.routes || []).map((r) => {
+    const steps = []; let dist = 0, dur = 0;
+    (r.legs || []).forEach((leg) => {
+      dist += num(leg.distance); dur += num(leg.duration);
+      (leg.steps || []).forEach((s) => {
+        const pl = s.polyline && (typeof s.polyline === 'string' ? s.polyline : (s.polyline.points || s.polyline.encoded));
+        const pts = typeof pl === 'string' ? decodePolyline(pl) : [];
+        steps.push({ text: s.instruction || faInstr(s.type, s.modifier, s.name), dist: num(s.distance), loc: normLoc(s.start_location) || pts[0] || null, type: s.type, mod: s.modifier, _pts: pts });
+      });
+    });
+    const ov = r.overview_polyline && (typeof r.overview_polyline === 'string' ? r.overview_polyline : r.overview_polyline.points);
+    const coords = ov ? decodePolyline(ov) : [].concat(...steps.map((s) => s._pts));
+    steps.forEach((s) => { delete s._pts; });
+    return { coords, distance: dist, duration: dur, steps, provider: 'neshan', trafficAware: true };
   }).filter((r) => r.coords.length > 1);
 }
 function parseOsrm(j) {
@@ -101,6 +118,12 @@ async function fetchGoogle(o, d) {
   if (r.status >= 400) throw new Error('HTTP ' + r.status + (j && j.error && j.error.message ? ' — ' + j.error.message : ''));
   const rs = parseGoogle(j || {}); if (!rs.length) throw new Error('گوگل مسیری برنگرداند.'); return rs;
 }
+async function fetchNeshan(o, d) {
+  const key = store.get('neshanKey', ''); if (!key) throw new Error('کلید نشان وارد نشده است.');
+  const j = await httpJson(`https://api.neshan.org/v4/direction?type=car&origin=${o.lat},${o.lng}&destination=${d.lat},${d.lng}&alternative=true`, { 'Api-Key': key });
+  if (j && j.status && j.status !== 'Ok' && !j.routes) throw new Error('پاسخ نشان: ' + (j.message || j.status));
+  const r = parseNeshan(j || {}); if (!r.length) throw new Error('نشان مسیری برنگرداند.'); return r;
+}
 async function fetchOsrm(o, d) {
   const j = await httpJson(`https://router.project-osrm.org/route/v1/driving/${o.lng},${o.lat};${d.lng},${d.lat}?overview=full&geometries=geojson&steps=true&alternatives=true`);
   if (j.code !== 'Ok') throw new Error('OSRM: ' + (j.message || j.code)); return parseOsrm(j);
@@ -109,17 +132,44 @@ function directRoute(o, d) {
   const dist = haversine(o, d);
   return [{ coords: [[o.lat, o.lng], [d.lat, d.lng]], distance: dist, duration: dist / 1.3, steps: [{ text: 'مستقیم به سمت مقصد بروید', dist, loc: [o.lat, o.lng], type: 'depart' }, { text: 'به مقصد رسیدید', dist: 0, loc: [d.lat, d.lng], type: 'arrive' }], provider: 'direct' }];
 }
-async function compute(o, d, engine) {
-  const tried = [], hasKey = !!store.get('googleKey', '');
-  const order = engine === 'auto' ? [hasKey ? 'google' : null, 'osrm', 'direct'].filter(Boolean) : [engine, 'direct'].filter((v, i, a) => a.indexOf(v) === i);
+const NAMES_FA = { neshan: 'نشان', google: 'گوگل', own: 'موتور داخلی', osrm: 'OSRM' };
+// ترافیک گوگل برای یک مستطیل (پیش از موتور داخلی تا وزن یال‌ها را عوض کند)
+async function trafficBox(o, d, onStatus) {
+  if (!FM.traffic || !navigator.onLine) return false;
+  const m = 0.02, b = { s: Math.min(o.lat, d.lat) - m, n: Math.max(o.lat, d.lat) + m, w: Math.min(o.lng, d.lng) - m, e: Math.max(o.lng, d.lng) + m };
+  try { if (onStatus) onStatus('دریافت ترافیک گوگل…'); const r = await FM.traffic.prepare(b); return !!r.ok; } catch (e) { return false; }
+}
+async function trafficAlong(list) {
+  if (!FM.traffic || !navigator.onLine) return false;
+  try { const r = await FM.traffic.prepareAlong(list.map((x) => x.coords)); return !!r.ok; } catch (e) { return false; }
+}
+async function compute(o, d, engine, onStatus) {
+  const say = onStatus || (() => {}), tried = [];
+  const hasN = !!store.get('neshanKey', ''), hasG = !!store.get('googleKey', '');
+  const order = engine === 'auto' ? [hasN ? 'neshan' : null, hasG ? 'google' : null, 'own', 'osrm', 'direct'].filter(Boolean) : [engine, 'direct'].filter((v, i, a) => a.indexOf(v) === i);
+  let boxP = null, res = null, used = 'direct';
   for (const e of order) {
     try {
-      if (e === 'google') return await fetchGoogle(o, d);
-      if (e === 'osrm') return await fetchOsrm(o, d);
-      if (e === 'direct') { if (tried.length) toast('مسیریابی آنلاین ممکن نشد (' + tried.join(' | ') + ') — خط مستقیم نمایش داده شد.', 6500); return directRoute(o, d); }
-    } catch (err) { tried.push((e === 'google' ? 'گوگل' : 'OSRM') + ': ' + (err.message || err)); }
+      say(e === 'own' ? 'موتور مسیریابی داخلی…' : e === 'direct' ? 'ساخت خط مستقیم…' : `مسیریابی با ${NAMES_FA[e]}…`);
+      if (e === 'neshan') res = await fetchNeshan(o, d);
+      else if (e === 'google') res = await fetchGoogle(o, d);
+      else if (e === 'osrm') res = await fetchOsrm(o, d);
+      else if (e === 'own') { if (!boxP) boxP = trafficBox(o, d, say); const ok = await boxP; res = await FM.engine.route(o, d, { onStatus: say, factorAt: ok ? FM.traffic.factorAt : null }); }
+      else { if (tried.length) toast('مسیریابی ممکن نشد (' + tried.join(' | ') + ') — خط مستقیم نمایش داده شد.', 7000); res = directRoute(o, d); }
+      used = e; break;
+    } catch (err) { tried.push((NAMES_FA[e] || e) + ': ' + (err.message || err)); res = null; }
   }
-  return directRoute(o, d);
+  if (!res) { res = directRoute(o, d); used = 'direct'; }
+  let traffic = false;
+  if (used !== 'direct') {
+    say('بررسی ترافیک گوگل روی مسیرها…'); traffic = await trafficAlong(res);
+  }
+  res.forEach((r) => {
+    if (traffic) { const sc = FM.traffic.scoreRoute(r.coords, r.duration, !r.trafficAware); r.score = sc; r.est = sc.est; r.delay = sc.delay; r.jamShare = sc.total ? sc.jam / sc.total : 0; }
+    else { r.score = null; r.est = r.duration; r.delay = 0; r.jamShare = 0; }
+    if (r.provider === 'own' && r.trafficAdjusted && r.staticDuration) { r.est = r.duration; r.delay = r.duration - r.staticDuration; }
+  });
+  return { routes: res, provider: used, traffic, tried };
 }
 
 /* ───────────── هندسه‌ی مسیر ───────────── */
@@ -127,6 +177,7 @@ function prep(r) {
   const c = r.coords, cum = [0];
   for (let i = 1; i < c.length; i++) cum.push(cum[i - 1] + haversine({ lat: c[i - 1][0], lng: c[i - 1][1] }, { lat: c[i][0], lng: c[i][1] }));
   r.cum = cum; r.total = cum[cum.length - 1] || 1;
+  r.steps.forEach((st) => { if (!st.text) st.text = faInstr(st.type, st.mod, st.name, st.exit); });
   if (!r.steps.length) r.steps.push({ text: 'مسیر را تا مقصد ادامه دهید', dist: r.distance, loc: r.coords[r.coords.length - 1], type: 'arrive' });
   r.steps.forEach((s) => { s.along = s.loc ? snap(r, { lat: s.loc[0], lng: s.loc[1] }).along : null; });
   return r;
@@ -151,36 +202,53 @@ function drawMarks() {
   $('#r-origin').textContent = origin ? origin.lat.toFixed(5) + ' , ' + origin.lng.toFixed(5) + (origin.me ? ' (موقعیت من)' : '') : 'موقعیت من (GPS)';
   $('#r-dest').textContent = dest ? dest.lat.toFixed(5) + ' , ' + dest.lng.toFixed(5) : 'انتخاب نشده';
 }
-function pickIndex() {
-  if (!routes.length) return 0; let best = 0;
-  routes.forEach((r, i) => { const v = mode === 'fast' ? r.duration : r.distance, b = mode === 'fast' ? routes[best].duration : routes[best].distance; if (v < b) best = i; });
-  return best;
+function badgesOf() {
+  const fast = routes.reduce((a, b) => (b.est < a.est ? b : a)), short = routes.reduce((a, b) => (b.distance < a.distance ? b : a));
+  const score = (r) => r.est * (1 + 0.6 * (r.jamShare || 0)), rec = routes.reduce((a, b) => (score(b) < score(a) ? b : a));
+  return { fast, short, rec };
 }
-const ENGINE_FA = { google: 'گوگل · با ترافیک', osrm: 'OSRM · بدون ترافیک', direct: 'خط مستقیم' };
+const ENGINE_FA = { neshan: 'نشان', google: 'گوگل', own: 'موتور داخلی', osrm: 'OSRM', direct: 'خط مستقیم' };
+function trafficBar(r) {
+  if (!r.score || !r.score.segments.length) return '';
+  const tot = r.score.segments.reduce((a, s) => a + s.len, 0) || 1;
+  return '<div class="tbar">' + r.score.segments.map((s) => `<i style="flex:${(s.len / tot).toFixed(4)};background:${FM.traffic.COLORS[s.level]}"></i>`).join('') + '</div>';
+}
 function showRoutes(fit) {
-  group.clearLayers(); const box = $('#r-summary'), stepsBox = $('#r-steps'); stepsBox.textContent = '';
-  if (!routes.length) { box.textContent = ''; $('#r-start').disabled = true; return; }
-  sel = pickIndex();
+  group.clearLayers(); const box = $('#r-summary'), cardsBox = $('#r-cards'), stepsBox = $('#r-steps'); stepsBox.textContent = ''; cardsBox.textContent = '';
+  if (!routes.length) { $('#r-start').disabled = true; $('#r-gmaps-note').hidden = true; return; }
+  const bd = badgesOf(); if (!selManual || sel >= routes.length) sel = routes.indexOf(bd.rec);
   routes.forEach((r, i) => { if (i !== sel) L.polyline(r.coords, { color: '#7f8c8d', weight: 5, opacity: 0.7, dashArray: '2 8' }).addTo(group); });
   const r = routes[sel];
-  L.polyline(r.coords, { color: '#fff', weight: 10, opacity: 0.9 }).addTo(group);
-  const line = L.polyline(r.coords, { color: r.provider === 'direct' ? '#e8641b' : '#1f6feb', weight: 6, dashArray: r.provider === 'direct' ? '10 8' : null }).addTo(group);
-  const fast = routes.reduce((a, b) => (b.duration < a.duration ? b : a)), short = routes.reduce((a, b) => (b.distance < a.distance ? b : a));
-  let html = `<b>${fmtLen(r.distance)}</b> · ${r.provider === 'direct' ? 'حدود ' : ''}${fmtDur(r.duration)} <small>(${ENGINE_FA[r.provider]})</small>`;
-  if (r.staticDuration && r.duration - r.staticDuration > 60) html += `<br><small>تأخیر ترافیک: حدود ${fmtDur(r.duration - r.staticDuration)}</small>`;
-  if (routes.length > 1) html += `<br><small>سریع‌ترین: ${fmtLen(fast.distance)} / ${fmtDur(fast.duration)} — کوتاه‌ترین: ${fmtLen(short.distance)} / ${fmtDur(short.duration)}</small>`;
-  if (r.provider === 'direct') html += '<br><small>مسیر جاده‌ای در دسترس نبود؛ هدایت به‌صورت فاصله و جهت مستقیم تا مقصد است.</small>';
-  box.innerHTML = html;
+  L.polyline(r.coords, { color: '#fff', weight: 11, opacity: 0.95 }).addTo(group);
+  let line;
+  if (r.score && r.score.covered > 0.02) {
+    const all = L.featureGroup();
+    r.score.segments.forEach((sg) => { const col = sg.level ? FM.traffic.COLORS[sg.level] : '#1f6feb'; all.addLayer(L.polyline(sg.coords, { color: col, weight: 7, lineCap: 'butt', lineJoin: 'round' })); });
+    all.addTo(group); line = all;
+  } else line = L.polyline(r.coords, { color: r.provider === 'direct' ? '#e8641b' : '#1f6feb', weight: 7, dashArray: r.provider === 'direct' ? '10 8' : null }).addTo(group);
+  routes.forEach((x, i) => {
+    const tags = []; if (x === bd.rec && routes.length > 1) tags.push('<span class="tag rec">پیشنهادی</span>'); if (x === bd.fast) tags.push('<span class="tag">سریع‌ترین</span>'); if (x === bd.short) tags.push('<span class="tag">کوتاه‌ترین</span>');
+    if (routes.length === 1) tags.length = 0;
+    const delay = x.delay > 60 ? `<small class="delay">+${fmtDur(x.delay)} ترافیک</small>` : '';
+    const jam = x.score && x.jamShare > 0.04 ? `<small class="delay">ترافیک سنگین ${nf(Math.round(x.jamShare * 100))}٪ مسیر</small>` : '';
+    const c = el('button', { type: 'button', class: 'rcard' + (i === sel ? ' on' : ''), html: `<div class="rc-top"><b>${fmtLen(x.distance)}</b><span>${x.provider === 'direct' ? 'حدود ' : ''}${fmtDur(x.est)}</span></div>${trafficBar(x)}<div class="rc-meta">${tags.join('')}${delay}${jam}</div>` });
+    c.addEventListener('click', () => { sel = i; selManual = true; showRoutes(true); });
+    cardsBox.appendChild(c);
+  });
+  let html = `<small>منبع مسیر: <b>${ENGINE_FA[r.provider] || r.provider}</b>`;
+  if (r.score) html += ` · ترافیک گوگل: ${nf(Math.round(r.score.covered * 100))}٪ مسیر پوشش داده شد`; else if (r.provider !== 'direct') html += ' · ترافیک گوگل در دسترس نبود';
+  if (r.provider === 'direct') html += ' — مسیر جاده‌ای در دسترس نبود؛ هدایت با فاصله و جهت مستقیم است';
+  box.innerHTML = html + '</small>';
   r.steps.forEach((s) => {
     const row = el('button', { type: 'button', class: 'step', html: `<span class="sa">${ARROW(s.type, s.mod)}</span><span class="st">${esc(s.text)}</span><small>${s.dist ? fmtLen(s.dist) : ''}</small>` });
     row.addEventListener('click', () => { if (s.loc) map.setView(s.loc, Math.max(map.getZoom(), 17)); });
     stepsBox.appendChild(row);
   });
   $('#r-start').disabled = false;
-  if (fit) map.fitBounds(line.getBounds(), { padding: [50, 50] });
+  if (fit && line.getBounds) map.fitBounds(line.getBounds(), { padding: [50, 50] });
 }
 function clear() {
-  stopNav(true); routes = []; origin = null; dest = null; group.clearLayers(); drawMarks(); showRoutes(false); $('#r-summary').textContent = '';
+  stopNav(true); routes = []; selManual = false; origin = null; dest = null; group.clearLayers(); drawMarks(); showRoutes(false); $('#r-summary').textContent = '';
 }
 function setOrigin(ll) { origin = { lat: ll.lat, lng: ll.lng, me: !!ll.me }; drawMarks(); if (FM.openSheet) FM.openSheet('route'); }
 function setDest(ll) { dest = { lat: ll.lat, lng: ll.lng }; drawMarks(); if (FM.openSheet) FM.openSheet('route'); }
@@ -190,7 +258,8 @@ async function go() {
   let o = origin;
   if (!o) { const fix = FM.gps && FM.gps.last(); if (!fix) { FM.gps && FM.gps.start(); toast('موقعیت شما هنوز مشخص نیست؛ مبدا را انتخاب کنید یا چند ثانیه صبر کنید.', 4000); return; } o = { lat: fix.ll.lat, lng: fix.ll.lng, me: true }; }
   $('#r-go').disabled = true; $('#r-summary').textContent = 'در حال مسیریابی…';
-  try { routes = (await compute(o, dest, $('#r-engine').value)).map(prep); } catch (e) { toast('خطا: ' + e.message, 5000); routes = []; }
+  selManual = false;
+  try { const res = await compute(o, dest, $('#r-engine').value, (m) => { $('#r-summary').textContent = m; }); routes = res.routes.map(prep); } catch (e) { toast('خطا: ' + e.message, 5000); routes = []; }
   $('#r-go').disabled = false; showRoutes(true);
 }
 
@@ -218,8 +287,8 @@ function hud(icon, instr, dist, rem, rotate) {
 async function reroute(p) {
   nav.lastReroute = Date.now(); toast('از مسیر خارج شدید؛ مسیر جدید محاسبه می‌شود…', 2500);
   try {
-    const rs = (await compute({ lat: p.lat, lng: p.lng }, dest, $('#r-engine').value)).map(prep);
-    routes = rs; showRoutes(false); nav.route = routes[sel]; nav.off = 0; nav.spoken = {};
+    const res = await compute({ lat: p.lat, lng: p.lng }, dest, $('#r-engine').value); const rs = res.routes.map(prep);
+    routes = rs; selManual = false; showRoutes(false); nav.route = routes[sel]; nav.off = 0; nav.spoken = {};
   } catch (e) { toast('محاسبه‌ی مسیر جدید ممکن نشد.'); }
 }
 function onFix(fix) {
@@ -266,10 +335,14 @@ function init(m) {
   $('#r-start').addEventListener('click', startNav);
   $('#nav-stop').addEventListener('click', () => stopNav(false));
   $('#r-engine').value = store.get('engine', 'auto'); $('#r-engine').addEventListener('change', () => store.set('engine', $('#r-engine').value));
-  const setMode = (mm) => { mode = mm; $('#r-mode-fast').classList.toggle('on', mm === 'fast'); $('#r-mode-short').classList.toggle('on', mm === 'short'); showRoutes(false); };
-  $('#r-mode-fast').addEventListener('click', () => setMode('fast')); $('#r-mode-short').addEventListener('click', () => setMode('short')); setMode('fast');
+  $('#r-offline').addEventListener('click', async () => {
+    const b = $('#r-offline'); b.disabled = true;
+    try { const n = await FM.engine.downloadArea(map.getBounds(), (i, t) => { b.textContent = `در حال دانلود جاده‌ها… ${nf(i)} از ${nf(t)}`; }); toast(`جاده‌های ${nf(n)} بلوک روی گوشی ذخیره شد؛ مسیریابی این محدوده بدون اینترنت هم کار می‌کند.`, 5000); }
+    catch (e) { toast('دانلود جاده‌ها ممکن نشد: ' + e.message, 7000); }
+    b.disabled = false; b.textContent = 'ذخیره‌ی جاده‌های این محدوده برای مسیریابی آفلاین';
+  });
   const v = $('#nav-voice'); v.checked = store.get('voice', false); v.addEventListener('change', () => { store.set('voice', v.checked); if (v.checked) speak('صدای راهنما روشن شد'); });
   if (FM.gps) FM.gps.onFix(onFix);
 }
-FM.route = { init, setOrigin, setDest, clear, _t: { decodePolyline, parseGoogle, parseOsrm, snap, prep, faInstr } };
+FM.route = { init, setOrigin, setDest, clear, compute, _t: { decodePolyline, parseGoogle, parseNeshan, parseOsrm, snap, prep, faInstr, badgesOf } };
 })(window);

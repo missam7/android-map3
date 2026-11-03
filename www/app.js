@@ -34,9 +34,9 @@ map.on('click', (e) => {
 function renderBaseList() {
   const cur = store.get('base', 'gsat'), box = $('#layer-list'); box.textContent = '';
   FM.tiles.LAYERS.forEach((l) => {
-    const b = document.createElement('button'); b.type = 'button'; b.className = 'layer-item' + (l.id === cur ? ' active' : '');
-    b.innerHTML = '<span class="dot"></span><span></span><small></small>'; b.children[1].textContent = l.name; b.children[2].textContent = l.note;
-    b.addEventListener('click', () => { if (FM.tiles.setBase(map, l.id)) { renderBaseList(); } });
+    const b = document.createElement('button'); b.type = 'button'; b.className = `lcard k-${l.kind || 'road'}` + (l.id === cur ? ' active' : '');
+    b.innerHTML = `<span class="bd">${FM.icon('check', 15)}</span><span class="nm"></span><span class="nt"></span>`; b.querySelector('.nm').textContent = l.name; b.querySelector('.nt').textContent = l.note;
+    b.addEventListener('click', () => { if (FM.tiles.setBase(map, l.id)) renderBaseList(); });
     box.appendChild(b);
   });
 }
@@ -75,13 +75,13 @@ FM.onBaseChange = () => { updateModeChip(); renderBaseList(); };
 async function settingsDialog() {
   const fld = (label, key, type, ph, hint) => {
     const i = type === 'ta' ? el('textarea', { class: 'field', rows: 3, dir: 'ltr', placeholder: ph }) : el('input', { type: 'text', class: 'field', dir: 'ltr', placeholder: ph });
-    i.value = store.get(key, ''); return { i, key, node: el('div', { class: 'frow col' }, [el('label', { text: label }), i].concat(hint ? [el('small', { class: 'hint', text: hint })] : [])) };
+    i.value = store.hasOwn(key) ? store.get(key, '') : ''; if (window.FM_DEFAULTS && window.FM_DEFAULTS[key] && !store.hasOwn(key)) i.placeholder = 'مقدار پیش‌فرض داخل برنامه فعال است (برای تغییر اینجا بنویسید)'; return { i, key, node: el('div', { class: 'frow col' }, [el('label', { text: label }), i].concat(hint ? [el('small', { class: 'hint', text: hint })] : [])) };
   };
   const fs = [
-    fld('کلید Google Maps Platform (برای مسیریابی با ترافیک)', 'googleKey', 'in', 'AIza…', 'فعال بودن «Routes API» روی پروژه‌ی گوگل لازم است. بدون کلید، مسیریابی با OSRM یا «باز کردن در Google Maps» انجام می‌شود.'),
-    fld('توکن پارسل مشهد (websdi.mashhad.ir)', 'mashhadToken', 'ta', 'eyJ0eXAi…', 'همان مقدار MASHHAD_API_KEY در فایل server.js قدیمی.'),
-    fld('کوکی ورود سحاک (برای استان و نواحی ثبتی)', 'sahakCookie', 'ta', 'cookiesession1=…; auth=…', 'مقدار هدر Cookie از مرورگری که در سحاک وارد شده‌اید.'),
-    fld('کلید API نقشه‌ی نشان (فقط برای دو لایه‌ی نشان)', 'neshanKey', 'in', 'service.…', '')
+    fld('کلید API نشان (مسیریابی و نقشه‌ی نشان)', 'neshanKey', 'in', 'service.…', 'پیش‌فرض: کلید داخل برنامه. اگر کلید جدیدی دارید اینجا بنویسید.'),
+    fld('توکن پارسل مشهد (websdi.mashhad.ir)', 'mashhadToken', 'ta', 'eyJ0eXAi…', 'پیش‌فرض: توکن داخل برنامه؛ نیازی به وارد کردن نیست.'),
+    fld('کلید Google Maps Platform (اختیاری)', 'googleKey', 'in', 'AIza…', 'فقط اگر بخواهید مسیریابی گوگل هم در فهرست منابع باشد.'),
+    fld('کوکی ورود سحاک (اختیاری، فقط برای نمایش لایه‌های سحاک)', 'sahakCookie', 'ta', 'cookiesession1=…; auth=…', 'برای تشخیص خودکار استان و ناحیه‌ی ثبتی لازم نیست؛ آن‌ها داخل برنامه تشخیص داده می‌شوند.')
   ];
   const body = el('div', {}, fs.map((f) => f.node));
   body.appendChild(el('p', { class: 'hint', text: 'این مقادیر فقط روی همین گوشی ذخیره می‌شوند و داخل برنامه یا پروژه‌ی GitHub نیستند.' }));
@@ -191,13 +191,17 @@ function refreshSymbolPreview() { const d = defSymbol(); $('#d-symbol-prev').inn
 $('#d-symbol').addEventListener('click', async () => { const v = await FM.pickSymbol(defSymbol(), 'نماد پیش‌فرض نقطه‌های جدید'); if (!v) return; store.set('defSymbol', v); refreshSymbolPreview(); });
 function pointFeature(ll, name, extra) {
   const d = defSymbol(), c = [+ll.lng.toFixed(8), +ll.lat.toFixed(8)]; if (extra && isFinite(extra.z)) c.push(extra.z);
-  return { type: 'Feature', properties: Object.assign({ name, saved: new Date().toISOString(), symbol: d.symbol, 'marker-color': d.color, size: d.size }, extra || {}), geometry: { type: 'Point', coordinates: c } };
+  const f = { type: 'Feature', properties: Object.assign({ name, saved: new Date().toISOString(), symbol: d.symbol, 'marker-color': d.color, size: d.size }, extra || {}), geometry: { type: 'Point', coordinates: c } };
+  const adm = FM.geo ? FM.geo.describe(ll.lat, ll.lng).text : ''; if (adm) f.properties.description = adm;   // استان، شهرستان، ناحیه‌ها خودکار
+  return f;
 }
 function announcePoint(name, ll) { toast(`نقطه‌ی ${name} ثبت شد — ${FM.fmtCoord(ll.lat, ll.lng).short}`, 3500); }
 async function savePointAt(ll, extra) {
-  let name = FM.project.nextName('P'), description;
-  if (!$('#d-quick').checked) { const r = await askText('ثبت نقطه', name, { description: '' }); if (!r) return; name = r.text || name; description = r.description; }
-  const f = pointFeature(ll, name, extra); if (description) f.properties.description = description;
+  let name = FM.project.nextName('P'), description = null;
+  const adm = FM.geo ? FM.geo.describe(ll.lat, ll.lng).text : '';
+  if (!$('#d-quick').checked) { const r = await askText('ثبت نقطه', name, { description: adm }); if (!r) return; name = r.text || name; description = r.description; }
+  const f = pointFeature(ll, name, extra);
+  if (description !== null) { if (description) f.properties.description = description; else delete f.properties.description; }
   FM.project.addFeature(f); announcePoint(name, ll); return f;
 }
 
@@ -303,12 +307,91 @@ $('#d-rec').addEventListener('click', async () => {
   $('#d-rec-info').textContent = ''; rec.pts = [];
 });
 
+/* ───────────── برگه‌ها: دسته‌ی کشیدن و دکمه‌ی بستن ───────────── */
+function decorateSheets() {
+  document.querySelectorAll('.sheet').forEach((sh) => {
+    const h2 = sh.querySelector(':scope > h2'); if (!h2 || sh.querySelector('.grab')) return;
+    const grab = el('div', { class: 'grab', html: '<i></i>' });
+    const head = el('div', { class: 'sh-head' });
+    const x = el('button', { type: 'button', class: 'x', 'aria-label': 'بستن', html: FM.icon('close', 18), onclick: closeSheets });
+    sh.insertBefore(grab, sh.firstChild); h2.parentNode.insertBefore(head, h2); head.appendChild(h2); head.appendChild(x);
+  });
+}
+
+/* ───────────── دکمه‌های شناور ───────────── */
+$('#f-zoom-in').addEventListener('click', () => map.zoomIn());
+$('#f-zoom-out').addEventListener('click', () => map.zoomOut());
+function syncTrafficFab() { const d = FM.tiles.LAYERS.find((l) => l.id === store.get('base', 'gsat')); $('#f-traffic').classList.toggle('on', !!(d && d.traffic)); }
+$('#f-traffic').addEventListener('click', () => { const on = FM.tiles.toggleTraffic(map); toast(on ? 'ترافیک گوگل روشن شد.' : 'به نقشه‌ی قبلی برگشت.'); renderBaseList(); syncTrafficFab(); });
+const baseChange = FM.onBaseChange; FM.onBaseChange = () => { baseChange(); syncTrafficFab(); };
+
+/* اطلاعات نقطه‌ی مرکز نقشه */
+$('#f-info').addEventListener('click', () => {
+  const c = map.getCenter(), f = FM.fmtCoord(c.lat, c.lng), d = FM.geo ? FM.geo.describe(c.lat, c.lng) : { text: '', lines: [] };
+  const w = el('div', { class: 'pop' });
+  w.appendChild(el('div', { class: 'pop-title', text: 'اطلاعات این نقطه' }));
+  w.appendChild(el('div', { class: 'pop-sub', dir: 'ltr', text: f.text }));
+  w.appendChild(d.text ? el('div', { class: 'pop-desc admin', text: d.text }) : el('div', { class: 'pop-desc', text: 'مرز اداری این محل شناخته نشد (داده‌ی مرزی نصب نیست یا نقطه خارج از ایران است).' }));
+  const btns = el('div', { class: 'pop-btns' });
+  const add = (label, fn) => btns.appendChild(el('button', { type: 'button', text: label, onclick: fn }));
+  add('ثبت نقطه', async () => { map.closePopup(); await savePointAt(c); });
+  add('مبدا', () => { FM.route.setOrigin(c); map.closePopup(); }); add('مقصد', () => { FM.route.setDest(c); map.closePopup(); });
+  if (FM.vec.parcelMode()) add('پارسل', () => { map.closePopup(); FM.vec.parcelClick(c); });
+  add('کپی', async () => { try { await navigator.clipboard.writeText(f.copy + (d.text ? '\n' + d.text : '')); toast('کپی شد.'); } catch (e) { toast('کپی انجام نشد.'); } });
+  w.appendChild(btns); L.popup({ maxWidth: 300 }).setLatLng(c).setContent(w).openOn(map);
+});
+
+/* ───────────── مرزهای اداری: وضعیت و افزودن فایل ───────────── */
+function renderGeoList() {
+  const box = $('#geo-list'); if (!box || !FM.geo) return; box.textContent = '';
+  FM.geo.statusList().forEach((s) => {
+    const row = el('div', { class: 'grow ' + (s.ok ? 'ok' : 'miss') }, [
+      el('span', { class: 'gi', html: s.ok ? FM.icon('check', 14) : '–' }), el('span', { class: 'gl', text: s.label }),
+      el('span', { class: 'gs', text: s.ok ? `${nf(s.count)} عارضه · ${s.sources[0]}` : 'داده‌ای نصب نشده' })
+    ]);
+    const user = s.packs.find((p) => p.id.startsWith('user:'));
+    if (user) row.appendChild(el('button', { type: 'button', class: 'mini', 'aria-label': 'حذف بسته', html: FM.icon('trash', 16), onclick: async () => { if (await confirmBox('حذف', `بسته‌ی «${user.label}» حذف شود؟`)) { await FM.geo.removePack(user.id); toast('حذف شد.'); } } }));
+    box.appendChild(row);
+  });
+}
+async function importBoundaryFiles(files) {
+  files = Array.from(files || []); if (!files.length) return;
+  toast('در حال خواندن فایل مرز…', 1500);
+  const res = await DIO.parseFiles(files); let done = 0;
+  for (const r of res) {
+    if (r.kind === 'error') { toast(r.fileName + ': ' + r.error, 6000); continue; }
+    if (r.kind !== 'vector') { toast('برای مرزها فایل برداری (GeoJSON، شیپ‌فایل، KML، DXF) لازم است.', 5000); continue; }
+    if (r.needsCrs) { const id = await FM.project.askCrs(r.fileName); if (!id) continue; DIO.applyCrs(r, id); }
+    const feats = [].concat(...r.layers.map((l) => l.features)); if (!feats.length) { toast('فایل عارضه‌ای ندارد.'); continue; }
+    const keys = Object.keys(feats[0].properties || {}); const guess = keys.find((k) => FM.geo.pickName(feats[0].properties, k) && FM.geo.pickName({ [k]: feats[0].properties[k] }, k) === FM.geo.pickName(feats[0].properties)) || keys[0] || 'name';
+    const body = el('div', {});
+    body.appendChild(el('p', { class: 'hint', text: `${nf(feats.length)} عارضه در «${r.fileName}». نوع مرز و ستونی که نام در آن است را مشخص کنید.` }));
+    const cat = el('select', { class: 'field' }, FM.geo.CATS.map((c) => el('option', { value: c.id, text: c.label }))); body.appendChild(el('div', { class: 'frow col' }, [el('label', { text: 'این فایل چه مرزی است؟' }), cat]));
+    const col = el('select', { class: 'field' }, keys.map((k) => el('option', { value: k, text: `${k}  —  ${String((feats[0].properties || {})[k]).slice(0, 24)}` }))); col.value = guess; body.appendChild(el('div', { class: 'frow col' }, [el('label', { text: 'ستون نام' }), col]));
+    const ok = await dialog({ title: 'افزودن بسته‌ی مرز اداری', body, focus: false, buttons: [{ label: 'انصراف', value: false }, { label: 'افزودن', primary: true, value: true }] });
+    if (!ok) continue;
+    const label = FM.geo.CATS.find((c) => c.id === cat.value).label;
+    try { const n = await FM.geo.importPack(feats, cat.value, label, col.value, r.fileName); toast(`${nf(n)} مرز «${label}» نصب شد.`, 4000); done++; } catch (e) { toast(e.message, 6000); }
+  }
+  if (done) renderGeoList();
+}
+$('#geo-add').addEventListener('click', () => $('#pack-in').click());
+$('#pack-in').addEventListener('change', async (e) => { const fl = Array.from(e.target.files); e.target.value = ''; await importBoundaryFiles(fl); });
+$('#geo-refresh').addEventListener('click', async () => {
+  const b = $('#geo-refresh'); b.disabled = true; toast('در حال دریافت مرزها از سرور شهرداری…', 3000);
+  let n = 0, err = '';
+  for (const key of ['mantaghe', 'districts', 'subdistricts']) { try { const fc = await FM.vec.fetchWfsByKey(key, true); if (fc) { FM.geo._t.addPack('wfs:' + key, FM.geo._t.WFS_CATS[key], FM.vec.WFS[key].name, 'سرور شهرداری', fc.features); n++; } } catch (e) { err = e.message; } }
+  b.disabled = false; renderGeoList(); toast(n ? `${nf(n)} لایه‌ی مرزی به‌روز شد.` : 'دریافت ممکن نشد' + (err ? ` (${err})` : '') + ' — اگر VPN روشن است خاموشش کنید.', 6000);
+});
+
 /* ───────────── شروع ───────────── */
 if (!FM.tiles.setBase(map, store.get('base', 'gsat'))) FM.tiles.setBase(map, 'gsat');
 FM.tiles.restoreOverlays(map);
-renderBaseList(); renderOverlayList(); updateCrosshair(); updateModeChip(); applyFmt(); refreshSymbolPreview();
+decorateSheets(); FM.applyIcons();
+renderBaseList(); renderOverlayList(); updateCrosshair(); updateModeChip(); applyFmt(); refreshSymbolPreview(); syncTrafficFab();
 renderHeading(); setDrawMode(null);
 FM.route.init(map);
 FM.vec.init(map);
 FM.project.init(map);
+FM.geo.onChange = renderGeoList; renderGeoList(); FM.geo.init();
 })();
