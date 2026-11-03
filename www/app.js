@@ -394,6 +394,7 @@ decorateSheets(); FM.applyIcons();
 renderBaseList(); renderOverlayList(); updateCrosshair(); updateModeChip(); applyFmt(); refreshSymbolPreview(); syncTrafficFab();
 renderHeading(); setDrawMode(null);
 FM.route.init(map);
+if (FM.search) FM.search.init(map);
 FM.vec.init(map);
 FM.project.init(map);
 FM.geo.onChange = renderGeoList; renderGeoList(); FM.geo.init();
