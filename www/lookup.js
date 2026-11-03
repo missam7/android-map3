@@ -76,11 +76,27 @@ const PK = (() => {
   };
 })();
 
+const BUNDLED = [
+  { file: 'data/provinces.json', id: 'bundled:province', cat: 'province', label: 'استان‌ها', nameProp: 'name' },
+  { file: 'data/mashhad_limits_districts.geojson', id: 'bundled:county', cat: 'county', label: 'شهرستان‌ها', nameProp: null },
+  { file: 'data/mashhad_limits_subdistricts.geojson', id: 'bundled:bakhsh', cat: 'bakhsh', label: 'بخش‌ها', nameProp: null },
+  { file: 'data/mashhad_limits_mantaghe.geojson', id: 'bundled:muni_region', cat: 'muni_region', label: 'مناطق شهرداری مشهد', nameProp: null },
+  { file: 'data/mashhad_nahie.geojson', id: 'bundled:muni_district', cat: 'muni_district', label: 'نواحی شهرداری مشهد', nameProp: null },
+  { file: 'data/reg_unit.geojson', id: 'bundled:reg_zone', cat: 'reg_zone', label: 'نواحی ثبتی', nameProp: null },
+  { file: 'data/plaq.geojson', id: 'bundled:plaque', cat: 'plaque', label: 'پلاک‌های ثبتی', nameProp: null }
+];
 async function loadBundled() {
-  try {
-    const r = await fetch('data/provinces.json'); if (!r.ok) throw new Error('HTTP ' + r.status);
-    const fc = await r.json(); addPack('bundled:province', 'province', 'استان‌ها', 'داخل برنامه (OpenStreetMap)', fc.features, 'name');
-  } catch (e) { status.lastError = 'بارگذاری استان‌ها: ' + e.message; }
+  for (const b of BUNDLED) {
+    try {
+      const r = await fetch(b.file);
+      if (!r.ok) continue;                       // فایل نبود؟ بی‌سروصدا رد شو
+      const fc = await r.json();
+      if (!fc || !Array.isArray(fc.features) || !fc.features.length) continue;
+      addPack(b.id, b.cat, b.label, 'داخل برنامه', fc.features, b.nameProp);
+      if (FM.geo.onChange) FM.geo.onChange();     // فهرست بعد از هر فایل تازه می‌شود
+      await new Promise((res) => setTimeout(res, 0));   // نفس‌گیری تا رابط قفل نشود
+    } catch (e) { status.lastError = b.label + ': ' + e.message; }
+  }
 }
 async function loadWfsCaches() {
   if (!FM.vec || !FM.vec.getCachedWfs) return;
@@ -138,6 +154,43 @@ async function importPack(features, cat, label, nameProp, source) {
   if (FM.geo.onChange) FM.geo.onChange(); return n;
 }
 async function removePack(id) { packs.delete(id); await PK.del(id); if (FM.geo.onChange) FM.geo.onChange(); }
-
-FM.geo = { init, lookup, describe, withAdminText, hasAdmin, CATS, statusList, importPack, removePack, pickName, fetchMissingWfs, status, onChange: null, _t: { buildIndex, findIn, inRing, polysOf, addPack, packs, WFS_CATS } };
+/* ───────────── آدرس خیابانی از نشان (آنلاین) ───────────── */
+const addrCache = new Map();
+async function address(lat, lng) {
+  const k = lat.toFixed(5) + ',' + lng.toFixed(5);
+  if (addrCache.has(k)) return addrCache.get(k);
+  const key = FM.store.get('neshanKey', '') || (root.FM_DEFAULTS && root.FM_DEFAULTS.neshanKey) || '';
+  if (!key || !navigator.onLine) return null;
+  const job = (async () => {
+    try {
+      const url = `https://api.neshan.org/v5/reverse?lat=${lat}&lng=${lng}`;
+      const Http = root.Lib && root.Lib.Http;
+      let j;
+      if (Http) {
+        const r = await Http.get({ url, headers: { 'Api-Key': key }, responseType: 'json', connectTimeout: 10000, readTimeout: 15000 });
+        if (r.status !== 200) return null;
+        j = typeof r.data === 'string' ? JSON.parse(r.data) : r.data;
+      } else { const r = await fetch(url, { headers: { 'Api-Key': key } }); if (!r.ok) return null; j = await r.json(); }
+      if (!j || j.status !== 'OK') return null;
+      return { route: clean(j.route_name), neighbourhood: clean(j.neighbourhood), city: clean(j.city),
+               state: clean(j.state), zone: clean(j.municipality_zone), full: clean(j.formatted_address) };
+    } catch (e) { return null; }
+  })();
+  addrCache.set(k, job);
+  if (addrCache.size > 300) addrCache.delete(addrCache.keys().next().value);
+  return job;
+}
+async function describeFull(lat, lng) {
+  const d = describe(lat, lng), a = await address(lat, lng);
+  if (!a) return d;
+  const extra = [];
+  if (a.city && !d.info.county) extra.push('شهر: ' + a.city);
+  if (a.neighbourhood) extra.push('محله: ' + a.neighbourhood);
+  if (a.route) extra.push('معبر: ' + a.route);
+  if (a.full) extra.push('آدرس: ' + a.full);
+  if (!extra.length) return d;
+  return { info: Object.assign({}, d.info, { street: a.route, neighbourhood: a.neighbourhood, address: a.full }),
+           lines: d.lines.concat(extra), text: d.lines.concat(extra).join('\n') };
+}
+FM.geo = { init, lookup, describe, describeFull, address, withAdminText, hasAdmin, CATS, statusList, importPack, removePack, pickName, fetchMissingWfs, status, onChange: null, _t: { buildIndex, findIn, inRing, polysOf, addPack, packs, WFS_CATS } };
 })(typeof window !== 'undefined' ? window : globalThis);
