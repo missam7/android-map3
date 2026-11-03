@@ -264,10 +264,21 @@ async function go() {
 }
 
 /* ───────────── هدایت لحظه‌ای ───────────── */
-function speak(text) {
+function speak(text, en) {
   if (!store.get('voice', false) || !root.speechSynthesis) return;
-  try { const u = new SpeechSynthesisUtterance(text); u.lang = 'fa-IR'; root.speechSynthesis.cancel(); root.speechSynthesis.speak(u); } catch (e) { /* ignore */ }
+  const lang = store.get('navLang', 'fa');
+  try {
+    root.speechSynthesis.cancel();
+    const say = (t, l) => { const u = new SpeechSynthesisUtterance(t); u.lang = l; u.rate = 0.95; root.speechSynthesis.speak(u); };
+    if (lang !== 'en') say(text, 'fa-IR');
+    if (lang !== 'fa' && en) setTimeout(() => say(en, 'en-US'), lang === 'both' ? 1200 : 0);
+    else if (lang === 'en' && !en) say(text, 'fa-IR');
+  } catch (e) { /* ignore */ }
 }
+const EN = { depart: 'Start driving', arrive: 'You have arrived', left: 'Turn left', right: 'Turn right',
+  'slight left': 'Keep left', 'slight right': 'Keep right', 'sharp left': 'Sharp left', 'sharp right': 'Sharp right',
+  straight: 'Go straight', uturn: 'Make a U-turn' };
+const enInstr = (s) => (s.type === 'arrive' ? EN.arrive : s.type === 'depart' ? EN.depart : (EN[s.mod] || 'Continue'));
 function startNav() {
   if (!routes.length) return;
   const r = routes[sel]; if (!FM.gps) return; FM.gps.start();
@@ -296,20 +307,22 @@ function onFix(fix) {
   const p = fix.ll, r = nav.route;
   if (r.provider === 'direct') {
     const d = haversine(p, dest), brg = bearing(p, dest), h = FM.heading();
-    if (d < 8) { nav.arrived = true; hud('⚑', 'به مقصد رسیدید', '', '', null); speak('به مقصد رسیدید'); return; }
+    if (d < 8) { nav.arrived = true; hud('⚑', 'به مقصد رسیدید', '', '', null); speak('به مقصد رسیدید'),EN.arrive; return; }
     hud('↑', 'به سمت مقصد بروید', fmtLen(d), `جهت ${nf(Math.round(brg))}°`, h == null ? brg : brg - h);
     return;
-  }
+       }
   const sn = snap(r, p), remain = Math.max(0, r.total - sn.along), eta = (r.duration / (r.distance || 1)) * remain;
   const remTxt = `${fmtLen(remain)} · ${fmtDur(eta)}`;
-  if (remain < 20) { nav.arrived = true; hud('⚑', 'به مقصد رسیدید', '', '', null); speak('به مقصد رسیدید'); return; }
+  if (remain < 20) { nav.arrived = true; hud('⚑', 'به مقصد رسیدید', '', '', null); speak('به مقصد رسیدید'), EN.arrive; return; }
   if (sn.dist > 45) { nav.off++; if (nav.off >= 3 && Date.now() - nav.lastReroute > 15000) { reroute(p); return; } } else nav.off = 0;
   let idx = r.steps.findIndex((s, i) => i > 0 && s.along != null && s.along > sn.along + 6);
   if (idx < 0) idx = r.steps.length - 1;
   const s = r.steps[idx] || { text: 'ادامه دهید', type: '', mod: '', along: r.total }, dm = Math.max(0, (s.along != null ? s.along : r.total) - sn.along);
   hud(ARROW(s.type, s.mod), s.text, fmtLen(dm), remTxt, null);
   const bucket = dm < 40 ? 0 : dm < 150 ? 1 : dm < 400 ? 2 : 3;
-  if (bucket < 3 && !nav.spoken[idx + ':' + bucket]) { nav.spoken[idx + ':' + bucket] = 1; speak(bucket === 0 ? s.text : `${fmtLen(Math.round(dm / 10) * 10)} دیگر، ${s.text}`); }
+   if (bucket < 3 && !nav.spoken[idx + ':' + bucket]) { nav.spoken[idx + ':' + bucket] = 1;
+    speak(bucket === 0 ? s.text : `${fmtLen(Math.round(dm / 10) * 10)} دیگر، ${s.text}`,
+          bucket === 0 ? enInstr(s) : `In ${Math.round(dm / 10) * 10} meters, ${enInstr(s)}`); }
 }
 
 
