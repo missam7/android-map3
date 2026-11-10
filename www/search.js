@@ -83,17 +83,35 @@ async function run(term) {
 }
 
 /* ───────────── فرمان صوتی ───────────── */
-function voice() {
-  const SR = root.SpeechRecognition || root.webkitSpeechRecognition;
+async function voice() {
+  const btn = $('#sr-mic');
+  const SRp = root.Lib && root.Lib.SpeechRecognition;
+  if (SRp) {                                   // مسیر بومی اندروید
+    try {
+      const av = await SRp.available();
+      if (!av || !av.available) { toast('تشخیص گفتار روی این گوشی در دسترس نیست (برنامه‌ی Google را به‌روز کنید).', 5000); return; }
+      let p = await SRp.checkPermissions();
+      if (p.speechRecognition !== 'granted') p = await SRp.requestPermissions();
+      if (p.speechRecognition !== 'granted') { toast('اجازه‌ی میکروفون داده نشد.', 4000); return; }
+      btn.classList.add('listening'); toast('بفرمایید…', 1500);
+      const r = await SRp.start({ language: store.get('voiceLang', 'fa-IR'), maxResults: 1, partialResults: false, popup: false, prompt: 'جستجو' });
+      btn.classList.remove('listening');
+      const t = r && r.matches && r.matches[0];
+      if (t) { $('#sr-input').value = t; run(t); } else toast('چیزی شنیده نشد.', 3000);
+    } catch (e) { btn.classList.remove('listening'); toast('شنیدن ممکن نشد: ' + (e.message || e), 4000); }
+    return;
+  }
+  const SR = root.SpeechRecognition || root.webkitSpeechRecognition;   // مرورگر دسکتاپ
   if (!SR) { toast('تشخیص گفتار روی این دستگاه پشتیبانی نمی‌شود.', 4000); return; }
   const r = new SR();
   r.lang = store.get('voiceLang', 'fa-IR'); r.interimResults = false; r.maxAlternatives = 1;
-  const btn = $('#sr-mic'); btn.classList.add('listening');
+  btn.classList.add('listening');
   r.onresult = (e) => { const t = e.results[0][0].transcript; $('#sr-input').value = t; run(t); };
   r.onerror = (e) => toast('شنیدن ممکن نشد: ' + e.error, 4000);
   r.onend = () => btn.classList.remove('listening');
   try { r.start(); toast('بفرمایید…', 1500); } catch (e) { btn.classList.remove('listening'); }
 }
+
 
 function init(m) {
   map = m;
