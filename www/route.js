@@ -5,7 +5,7 @@ const FM = root.FM, { $, nf, toast, fmtLen, fmtDur, haversine, bearing, store, e
 const RAD = Math.PI / 180;
 let map = null, origin = null, dest = null, routes = [], sel = 0, selManual = false, nav = null;
 const group = L.layerGroup(), marks = {};
-
+const K = (n) => store.get(n, '') || (root.FM_DEFAULTS && root.FM_DEFAULTS[n]) || '';
 /* ───────────── شبکه ───────────── */
 async function httpJson(url, headers) {
   const Http = root.Lib && root.Lib.Http;
@@ -109,7 +109,7 @@ function parseOsrm(j) {
   });
 }
 async function fetchGoogle(o, d) {
-  const key = store.get('googleKey', ''); if (!key) throw new Error('کلید Google Maps Platform وارد نشده است.');
+  const key = K('googleKey'); if (!key) throw new Error('کلید Google Maps Platform وارد نشده است.');
   const Http = root.Lib && root.Lib.Http; if (!Http) throw new Error('لایه‌ی شبکه‌ی بومی در دسترس نیست.');
   const ll = (p) => ({ location: { latLng: { latitude: p.lat, longitude: p.lng } } });
   const mask = 'routes.duration,routes.staticDuration,routes.distanceMeters,routes.polyline.encodedPolyline,routes.legs.steps.distanceMeters,routes.legs.steps.polyline.encodedPolyline,routes.legs.steps.startLocation,routes.legs.steps.navigationInstruction';
@@ -119,7 +119,7 @@ async function fetchGoogle(o, d) {
   const rs = parseGoogle(j || {}); if (!rs.length) throw new Error('گوگل مسیری برنگرداند.'); return rs;
 }
 async function fetchNeshan(o, d) {
-  const key = store.get('neshanKey', ''); if (!key) throw new Error('کلید نشان وارد نشده است.');
+  const key = K('neshanKey'); if (!key) throw new Error('کلید نشان وارد نشده است.');
   const j = await httpJson(`https://api.neshan.org/v4/direction?type=car&origin=${o.lat},${o.lng}&destination=${d.lat},${d.lng}&alternative=true`, { 'Api-Key': key });
   if (j && j.status && j.status !== 'Ok' && !j.routes) throw new Error('پاسخ نشان: ' + (j.message || j.status));
   const r = parseNeshan(j || {}); if (!r.length) throw new Error('نشان مسیری برنگرداند.'); return r;
@@ -145,7 +145,7 @@ async function trafficAlong(list) {
 }
 async function compute(o, d, engine, onStatus) {
   const say = onStatus || (() => {}), tried = [];
-  const hasN = !!store.get('neshanKey', ''), hasG = !!store.get('googleKey', '');
+  const hasN = !!K('neshanKey'), hasG = !!K('googleKey');
   const order = engine === 'auto' ? [hasN ? 'neshan' : null, hasG ? 'google' : null, 'own', 'osrm', 'direct'].filter(Boolean) : [engine, 'direct'].filter((v, i, a) => a.indexOf(v) === i);
   let boxP = null, res = null, used = 'direct';
   for (const e of order) {
