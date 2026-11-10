@@ -1,0 +1,69 @@
+/* گزارش‌های شهرداری مشهد (عرصه / پروانه / پایان‌کار) داخل خود برنامه */
+(function (root) {
+'use strict';
+const FM = root.FM, { el, esc, toast, store, dialog } = FM;
+const Lb = () => root.Lib;
+const KEY = (n) => store.get(n, '') || (root.FM_DEFAULTS && root.FM_DEFAULTS[n]) || '';
+
+/* ⚠️ این آدرس را از server.js قدیمی (بخش mashhadPermitInfo) بردار و اینجا بگذار */
+const REPORT_URL = '';
+
+const SECTIONS = [
+  { key: 'land',       title: '🗺️ عرصه',      open: true,  where: 'M1U2Ywlw4QvyqkvEnUYboRL3kjrDwbnvmv2QrhMQqhg=062', sub: 'XQbw1fC+BJlvISASIJiMyApYKWigXA6AyzrIq5F9OHs=034', order: 'C974lLbvhO4VkvDS16wU4SiKlUHGIPEB5aHD9RwuIEU=094' },
+  { key: 'permit',     title: '📑 پروانه',     open: false, where: 'M1U2Ywlw4QvyqkvEnUYboRL3kjrDwbnvmv2QrhMQqhg=077', sub: 'XQbw1fC+BJlvISASIJiMyApYKWigXA6AyzrIq5F9OHs=030', order: 'C974lLbvhO4VkvDS16wU4SiKlUHGIPEB5aHD9RwuIEU=008' },
+  { key: 'completion', title: '✅ پایان‌کار',  open: false, where: 'M1U2Ywlw4QvyqkvEnUYboRL3kjrDwbnvmv2QrhMQqhg=007', sub: 'XQbw1fC+BJlvISASIJiMyApYKWigXA6AyzrIq5F9OHs=093', order: 'C974lLbvhO4VkvDS16wU4SiKlUHGIPEB5aHD9RwuIEU=072' }
+];
+
+/* تنها نقطه‌ای که به شبکه وصل می‌شود */
+async function callReport(code, s) {
+  if (!REPORT_URL) throw new Error('آدرس سرویس گزارش تنظیم نشده است (REPORT_URL در report.js).');
+  const qs = new URLSearchParams({ where: s.where, sub: s.sub, order: s.order, value: String(code) });
+  const r = await Lb().Http.get({
+    url: REPORT_URL + (REPORT_URL.includes('?') ? '&' : '?') + qs.toString(),
+    headers: { Accept: 'application/json', Authorization: 'Bearer ' + KEY('mashhadToken') },
+    responseType: 'json', connectTimeout: 15000, readTimeout: 40000
+  });
+  if (r.status === 401 || r.status === 403) throw new Error('توکن منقضی یا نامعتبر است.');
+  if (r.status !== 200) throw new Error('HTTP ' + r.status);
+  return typeof r.data === 'string' ? JSON.parse(r.data) : r.data;
+}
+
+/* خروجی را به جدول تبدیل می‌کند؛ هم آرایه‌ی ردیف پشتیبانی می‌شود هم شیء ساده */
+function toTable(data) {
+  const rows = Array.isArray(data) ? data : (data && (data.rows || data.Rows || data.data)) || [];
+  const list = Array.isArray(rows) ? rows : [rows];
+  if (!list.length) return el('div', { class: 'hint', text: 'اطلاعاتی یافت نشد.' });
+  const wrap = el('div', { class: 'tbl-wrap' }), t = el('table', { class: 'pop-tbl small' });
+  const cols = Object.keys(list[0] || {}).filter((k) => typeof list[0][k] !== 'object');
+  t.appendChild(el('tr', {}, cols.map((c) => el('th', { text: c }))));
+  list.forEach((rw) => t.appendChild(el('tr', {}, cols.map((c) => el('td', { text: rw[c] == null ? '' : String(rw[c]) })))));
+  wrap.appendChild(t); return wrap;
+}
+
+async function open(code) {
+  if (!code) { toast('کد نوسازی در دسترس نیست.'); return; }
+  const body = el('div', {});
+  body.appendChild(el('div', { class: 'pop-sub', text: 'کد نوسازی' }));
+  body.appendChild(el('div', { class: 'nosazi', dir: 'ltr', text: String(code) }));
+  const state = {};
+  SECTIONS.forEach((s) => {
+    const content = el('div', { class: 'sec-body' });
+    const cb = el('input', { type: 'checkbox' }); cb.checked = s.open;
+    const box = el('div', { class: 'sec' }, [el('label', { class: 'chk' }, [cb, el('span', { text: s.title })]), content]);
+    content.hidden = !s.open;
+    state[s.key] = { content, loaded: false, busy: false };
+    cb.addEventListener('change', () => { content.hidden = !cb.checked; if (cb.checked) load(s); });
+    body.appendChild(box);
+  });
+  async function load(s) {
+    const st = state[s.key]; if (st.loaded || st.busy) return; st.busy = true;
+    st.content.textContent = ''; st.content.appendChild(el('div', { class: 'hint', text: 'در حال دریافت…' }));
+    try { const d = await callReport(code, s); st.content.textContent = ''; st.content.appendChild(toTable(d)); st.loaded = true; }
+    catch (e) { st.content.textContent = ''; st.content.appendChild(el('div', { class: 'hint', text: 'خطا: ' + e.message })); }
+    st.busy = false;
+  }
+  load(SECTIONS[0]);
+  await dialog({ title: 'اطلاعات ملک', body, focus: false, buttons: [{ label: 'بستن', value: null }] });
+}
+FM.report = { open, SECTIONS };
+})(window);
