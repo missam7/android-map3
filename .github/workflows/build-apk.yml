@@ -31,9 +31,14 @@ jobs:
           python3 - <<'EOF'
           p = 'android/app/src/main/AndroidManifest.xml'
           s = open(p, encoding='utf-8').read()
-          add = ('<uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />\n'
+                    add = ('<uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />\n'
                  '    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />\n'
+                 '    <uses-permission android:name="android.permission.RECORD_AUDIO" />\n'
                  '    <uses-feature android:name="android.hardware.location.gps" />\n'
+                 '    <queries>\n'
+                 '      <intent><action android:name="android.speech.RecognitionService" /></intent>\n'
+                 '      <intent><action android:name="android.intent.action.TTS_SERVICE" /></intent>\n'
+                 '    </queries>\n'
                  '    ')
           assert '<application' in s, 'application tag not found'
           s = s.replace('<application', add + '<application', 1)
