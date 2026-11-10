@@ -302,11 +302,7 @@ async function parcelClick(ll) {
     FM.project.addFeature({ type: 'Feature', geometry: feat.geometry, properties: props });
     toast('پارسل در پروژه ذخیره شد.'); map.closePopup();
   });
-  if (code) add('گزارش‌های شهرداری', async () => {
-    try { await navigator.clipboard.writeText(String(code)); } catch (e) { /* ignore */ }
-    toast('کد کپی شد؛ در صفحه‌ی شهرداری وارد کنید (عرصه / پروانه / پایان‌کار).', 5000);
-    try { await Lb().App.openUrl({ url: MASHHAD_PAGE }); } catch (e) { window.open(MASHHAD_PAGE, '_blank'); }
-  });
+  if (code && FM.report) add('گزارش‌های شهرداری', () => FM.report.open(code));
   if (FM.route) { add('مبدا', () => { FM.route.setOrigin(ll); map.closePopup(); }); add('مقصد', () => { FM.route.setDest(ll); map.closePopup(); }); }
   w.appendChild(btns);
   L.popup({ maxWidth: 320, autoPan: true }).setLatLng(ll).setContent(w).on('remove', clearParcel).openOn(map);
