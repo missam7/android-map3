@@ -269,7 +269,7 @@ const clearParcel = () => { if (parcelHi) { map.removeLayer(parcelHi); parcelHi 
 const parcelMode = () => FM.store.get('base', '') === 'mashhad' || store.get('parcelManual', false);
 async function parcelClick(ll) {
   clearParcel();
-  const token = store.get('mashhadToken', '');
+  const token = store.get('mashhadToken', '') || (root.FM_DEFAULTS && root.FM_DEFAULTS.mashhadToken) || '';
   if (!token) { await dialog({ title: 'توکن پارسل مشهد لازم است', body: '<p>برای استعلام پارسل باید توکن سرویس <b>websdi.mashhad.ir</b> را در «تنظیمات و کلیدها» وارد کنید. همان مقدار <code dir="ltr">MASHHAD_API_KEY</code> داخل فایل <code dir="ltr">server.js</code> قدیمی شماست.</p>' }); return; }
   toast('در حال استعلام پلاک…', 2000);
   const cql = `INTERSECTS(wkb_geometry,POINT(${ll.lat} ${ll.lng}))`;
