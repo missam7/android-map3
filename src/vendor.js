@@ -9,7 +9,10 @@ import { CapacitorHttp } from '@capacitor/core';
 import { Filesystem, Directory, Encoding } from '@capacitor/filesystem';
 import { Share } from '@capacitor/share';
 import { App } from '@capacitor/app';
+import { SpeechRecognition } from '@capacitor-community/speech-recognition';
+import { TextToSpeech } from '@capacitor-community/text-to-speech';
 import { VectorTile } from '@mapbox/vector-tile';
 import { PbfReader } from 'pbf';
 
-window.Lib = { proj4, togeojson, shp, JSZip, XLSX, shpwrite, Http: CapacitorHttp, Filesystem, Directory, Encoding, Share, App, VectorTile, PbfReader };
+window.Lib = { proj4, togeojson, shp, JSZip, XLSX, shpwrite, Http: CapacitorHttp, Filesystem, Directory, Encoding, Share, App, VectorTile, PbfReader, SpeechRecognition, TextToSpeech };
+
