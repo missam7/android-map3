@@ -264,17 +264,21 @@ async function go() {
 }
 
 /* ───────────── هدایت لحظه‌ای ───────────── */
-function speak(text, en) {
-  if (!store.get('voice', false) || !root.speechSynthesis) return;
-  const lang = store.get('navLang', 'fa');
-  try {
-    root.speechSynthesis.cancel();
-    const say = (t, l) => { const u = new SpeechSynthesisUtterance(t); u.lang = l; u.rate = 0.95; root.speechSynthesis.speak(u); };
-    if (lang !== 'en') say(text, 'fa-IR');
-    if (lang !== 'fa' && en) setTimeout(() => say(en, 'en-US'), lang === 'both' ? 1200 : 0);
-    else if (lang === 'en' && !en) say(text, 'fa-IR');
-  } catch (e) { /* ignore */ }
+  const TTS = () => (root.Lib && root.Lib.TextToSpeech) || null;
+async function sayOne(text, lang) {
+  const t = TTS();
+  if (t) { try { await t.speak({ text, lang, rate: 1.0, pitch: 1.0, volume: 1.0, category: 'ambient' }); return; } catch (e) { /* برگرد به وب */ } }
+  if (root.speechSynthesis) { try { const u = new SpeechSynthesisUtterance(text); u.lang = lang; u.rate = 0.95; root.speechSynthesis.speak(u); } catch (e) { /* ignore */ } }
 }
+async function speak(text, en) {
+  if (!store.get('voice', false)) return;
+  const lang = store.get('navLang', 'fa'), t = TTS();
+  try { if (t) await t.stop(); else if (root.speechSynthesis) root.speechSynthesis.cancel(); } catch (e) { /* ignore */ }
+  if (lang !== 'en') await sayOne(text, 'fa-IR');
+  if (lang !== 'fa' && en) await sayOne(en, 'en-US');
+  if (lang === 'en' && !en) await sayOne(text, 'fa-IR');
+}
+
 const EN = { depart: 'Start driving', arrive: 'You have arrived', left: 'Turn left', right: 'Turn right',
   'slight left': 'Keep left', 'slight right': 'Keep right', 'sharp left': 'Sharp left', 'sharp right': 'Sharp right',
   straight: 'Go straight', uturn: 'Make a U-turn' };
@@ -290,7 +294,7 @@ function startNav() {
   const fix = FM.gps.last(); if (fix) onFix(fix);
 }
 function stopNav(silent) {
-  nav = null; $('#nav-hud').hidden = true; document.body.classList.remove('navigating'); if (root.speechSynthesis) try { root.speechSynthesis.cancel(); } catch (e) { /* ignore */ }
+  nav = null; $('#nav-hud').hidden = true; document.body.classList.remove('navigating');   try { const t = TTS(); if (t) t.stop(); else if (root.speechSynthesis) root.speechSynthesis.cancel(); } catch (e) { /* ignore */ }
   if (!silent) toast('هدایت پایان یافت.');
 }
 function hud(icon, instr, dist, rem, rotate) {
@@ -309,13 +313,13 @@ function onFix(fix) {
   const p = fix.ll, r = nav.route;
   if (r.provider === 'direct') {
     const d = haversine(p, dest), brg = bearing(p, dest), h = FM.heading();
-    if (d < 8) { nav.arrived = true; hud('⚑', 'به مقصد رسیدید', '', '', null); speak('به مقصد رسیدید'),EN.arrive; return; }
+    if (d < 8) { nav.arrived = true; hud('⚑', 'به مقصد رسیدید', '', '', null); speak('به مقصد رسیدید', EN.arrive); return; }
     hud('↑', 'به سمت مقصد بروید', fmtLen(d), `جهت ${nf(Math.round(brg))}°`, h == null ? brg : brg - h);
     return;
        }
   const sn = snap(r, p), remain = Math.max(0, r.total - sn.along), eta = (r.duration / (r.distance || 1)) * remain;
   const remTxt = `${fmtLen(remain)} · ${fmtDur(eta)}`;
-  if (remain < 20) { nav.arrived = true; hud('⚑', 'به مقصد رسیدید', '', '', null); speak('به مقصد رسیدید'), EN.arrive; return; }
+  if (remain < 20) { nav.arrived = true; hud('⚑', 'به مقصد رسیدید', '', '', null); speak('به مقصد رسیدید', EN.arrive); return; }
   if (sn.dist > 45) { nav.off++; if (nav.off >= 3 && Date.now() - nav.lastReroute > 15000) { reroute(p); return; } } else nav.off = 0;
   let idx = r.steps.findIndex((s, i) => i > 0 && s.along != null && s.along > sn.along + 6);
   if (idx < 0) idx = r.steps.length - 1;
@@ -356,8 +360,14 @@ function init(m) {
     catch (e) { toast('دانلود جاده‌ها ممکن نشد: ' + e.message, 7000); }
     b.disabled = false; b.textContent = 'ذخیره‌ی جاده‌های این محدوده برای مسیریابی آفلاین';
   });
-  const v = $('#nav-voice'); v.checked = store.get('voice', false); v.addEventListener('change', () => { store.set('voice', v.checked); if (v.checked) speak('صدای راهنما روشن شد'); });
-  const nl = $('#nav-lang'); nl.value = store.get('navLang', 'fa');
+  const v = $('#nav-voice'); v.checked = store.get('voice', false);
+  v.addEventListener('change', async () => {
+    store.set('voice', v.checked); if (!v.checked) { try { const t = TTS(); if (t) await t.stop(); } catch (e) {} return; }
+    const t = TTS();
+    if (t) { try { const s = await t.isLanguageSupported({ lang: 'fa-IR' }); if (!s.supported) toast('صدای فارسی روی این گوشی نصب نیست. از تنظیمات اندروید → «تبدیل متن به گفتار» صدای فارسی را نصب کنید؛ فعلاً می‌توانید زبان هدایت را روی English بگذارید.', 8000); } catch (e) { /* ignore */ } }
+    speak('صدای راهنما روشن شد', 'Voice guidance is on');
+  });
+ const nl = $('#nav-lang'); nl.value = store.get('navLang', 'fa');
   nl.addEventListener('change', () => { store.set('navLang', nl.value); });
 
   if (FM.gps) FM.gps.onFix(onFix);
