@@ -5,7 +5,7 @@ const FM = root.FM, { $, el, esc, toast, store, nf } = FM;
 let map = null, items = [], tmr = null;
 const key = () => store.get('neshanKey', '') || (root.FM_DEFAULTS && root.FM_DEFAULTS.neshanKey) || '';
 
-const COORD = /^\s*(-?\d{1,2}(?:\.\d+)?)\s*[,،\s]\s*(-?\d{2,3}(?:\.\d+)?)\s*$/;
+const NOSAZI = /^\s*[\d۰-۹٠-٩]{1,4}(?:[-–—/][\d۰-۹٠-٩]{1,4}){6}\s*$|^\s*\d{6,}\s*$/;
 const NOSAZI = /^\s*\d{6,}\s*$/;
 
 async function neshanSearch(term) {
