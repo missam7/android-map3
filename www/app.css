@@ -333,4 +333,13 @@ body.navigating .sheet, body.navigating #bottombar { display: none; }
 #hud #gps-chip { font-size: 10.5px; padding: 2px 7px; gap: 4px; }
 #hud .fmt-switch button { padding: 4px 10px; font-size: 11px; }
 body.navigating #searchbar { display: none; }
+.rep-sec { margin-top: 10px; border-top: 1px solid var(--line); padding-top: 8px; }
+.rep-body { margin-top: 6px; }
+.rep .tbl-wrap { overflow-x: auto; }
+.rep table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+.rep td, .rep th { border: 1px solid var(--line); padding: 4px 6px; text-align: start; vertical-align: top; }
+.rep tr.hd td, .rep tr.hd th, .rep th { background: var(--teal-l); font-weight: 700; }
+.rep .nosazi { font-size: 15px; font-weight: 700; letter-spacing: .5px; }
+.rep .mini { margin-top: 6px; padding: 5px 12px; border: 1px solid var(--line); border-radius: 10px; background: #fff; font-size: 12.5px; }
+
 
