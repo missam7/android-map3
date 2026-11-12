@@ -28,22 +28,22 @@ jobs:
 
       - name: Add location permissions
         run: |
-          python3 - <<'EOF'
+          python3 - <<'PY'
           p = 'android/app/src/main/AndroidManifest.xml'
           s = open(p, encoding='utf-8').read()
-                    add = ('<uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />\n'
-                 '    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />\n'
-                 '    <uses-permission android:name="android.permission.RECORD_AUDIO" />\n'
-                 '    <uses-feature android:name="android.hardware.location.gps" />\n'
-                 '    <queries>\n'
-                 '      <intent><action android:name="android.speech.RecognitionService" /></intent>\n'
-                 '      <intent><action android:name="android.intent.action.TTS_SERVICE" /></intent>\n'
-                 '    </queries>\n'
-                 '    ')
+          add = """<uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+              <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+              <uses-permission android:name="android.permission.RECORD_AUDIO" />
+              <uses-feature android:name="android.hardware.location.gps" android:required="false" />
+              <queries>
+                <intent><action android:name="android.speech.RecognitionService" /></intent>
+                <intent><action android:name="android.intent.action.TTS_SERVICE" /></intent>
+              </queries>
+              """
           assert '<application' in s, 'application tag not found'
           s = s.replace('<application', add + '<application', 1)
           open(p, 'w', encoding='utf-8').write(s)
-          EOF
+          PY
           grep -q ACCESS_FINE_LOCATION android/app/src/main/AndroidManifest.xml
 
       - name: Sync web files
